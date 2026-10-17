@@ -4,7 +4,7 @@ declare(strict_types=1);
 $mvPage = (string)($_GET['page'] ?? '');
 $mvUser = current_user();
 $mvAllowedRoles = [
-    'rt-data' => ['rt','admin_desa','petugas'],
+    'rt-data' => ['rt','admin_desa','owner','petugas'],
     'rw-rekap' => ['rw','admin_desa','owner','petugas'],
     'dokumen' => ['rt','petugas','admin_desa','owner'],
     'perubahan' => ['rt','petugas','admin_desa','owner'],
@@ -16,7 +16,7 @@ $mvAllowedRoles = [
     'admin-budget' => ['admin_desa','owner'],
     'admin-resident-export' => ['admin_desa','owner'],
     'laporan' => ['rt','rw','petugas','admin_desa','owner','kepala_desa'],
-    'notifikasi' => ['warga','rt','rw','petugas','admin_desa','kepala_desa'],
+    'notifikasi' => ['warga','rt','rw','petugas','admin_desa','owner','kepala_desa'],
 ];
 function mv_top(string $title, string $description, bool $public = false): void {
     echo '<section class="page-hero"><span class="eyebrow">'.e($public?'Informasi Publik':'Ruang Kerja Terbatas').'</span><h1>'.e($title).'</h1><p>'.e($description).'</p></section>';
@@ -375,7 +375,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         foreach($rts as $rt) echo '<tr><td>'.e($rt['dusun_name']??'Belum ditetapkan').'</td><td>'.e($rt['rw_code']).'</td><td>'.e($rt['number_code']).'</td><td>'.((int)$rt['is_active']?'Aktif':'Nonaktif').'</td></tr>';
         echo '</tbody></table></div><p class="muted">Akun Ketua RT dapat dibuat pada menu Akun RT/RW. Saat dibuat, RT baru akan disimpan di bawah RW pilihan.</p></section>';
     } elseif($mvPage==='admin-users') {
-        mv_top('Akun RT/RW','Akun dibuat secara individual dan ditugaskan ke wilayah tertentu. Menonaktifkan akun RT mencabut sesi yang sedang aktif.');
+        mv_top(($mvUser['role'] ?? '')==='owner' ? 'Akun & Hak Akses' : 'Akun RT/RW','Akun dibuat secara individual dan ditugaskan ke wilayah tertentu. Owner juga dapat mengelola akun Admin Desa. Menonaktifkan akun mencabut sesi yang sedang aktif.');
         $rws=$dbx->query('SELECT rw.id,rw.number_code,d.name AS dusun_name FROM rw_units rw LEFT JOIN dusun d ON d.id=rw.dusun_id WHERE rw.is_active=1 ORDER BY d.name,rw.number_code')->fetchAll();
         echo '<section class="content-layout"><div class="panel"><h2>Buat akun Ketua RT</h2><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="module_create_rt_account"><label>Wilayah RW<select name="rw_id" required><option value="">Pilih RW</option>';
         foreach($rws as $rw) echo '<option value="'.(int)$rw['id'].'">'.e(($rw['dusun_name']??'Dusun -').' / RW '.$rw['number_code']).'</option>';
@@ -383,7 +383,11 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         foreach($rws as $rw) echo '<option value="'.(int)$rw['id'].'">'.e(($rw['dusun_name']??'Dusun -').' / RW '.$rw['number_code']).'</option>';
         echo '</select></label><label>Nama pengurus<input name="full_name" maxlength="160" required></label><label>Username<input name="username" pattern="[A-Za-z0-9._-]{4,80}" minlength="4" maxlength="80" required></label><label>Kata sandi awal (min. 14 karakter)<input type="password" name="password" minlength="14" required autocomplete="new-password"></label><button class="button button-primary" type="submit">Buat akun RW →</button></form></div></section>';
         echo '<section class="panel"><h2>Buat akun petugas / kepala desa</h2><p>Akun kerja desa bersifat pribadi. Pengguna wajib mengganti kata sandi awal ketika masuk pertama kali.</p><form method="post" class="form-grid">'.csrf_field().'<input type="hidden" name="action" value="module_create_staff_account"><label>Peran<select name="staff_role"><option value="petugas">Petugas Desa</option><option value="kepala_desa">Kepala Desa</option></select></label><label>Nama lengkap<input name="full_name" maxlength="160" required></label><label>Username<input name="username" pattern="[A-Za-z0-9._-]{4,80}" minlength="4" maxlength="80" required></label><label>Email (opsional)<input type="email" name="email" maxlength="190"></label><label class="full-span">Kata sandi awal (minimal 14 karakter)<input type="password" name="password" minlength="14" required autocomplete="new-password"></label><div class="full-span"><button class="button button-primary" type="submit">Buat akun petugas →</button></div></form></section>';
-        $users=$dbx->query("SELECT u.id,u.username,u.full_name,u.role,u.rt_id,u.rw_id,u.is_active,u.created_at,rt.number_code AS rt_code,rw.number_code AS rw_code,d.name AS dusun_name FROM app_users u LEFT JOIN rt_units rt ON rt.id=u.rt_id LEFT JOIN rw_units rw ON rw.id=COALESCE(u.rw_id,rt.rw_id) LEFT JOIN dusun d ON d.id=rw.dusun_id WHERE u.role IN ('rt','rw','petugas','kepala_desa') ORDER BY FIELD(u.role,'rt','rw','petugas','kepala_desa'),d.name,rw.number_code,rt.number_code,u.full_name")->fetchAll();
+        if (($mvUser['role'] ?? '') === 'owner') {
+            echo '<section class="panel"><h2>Buat akun Admin Desa</h2><p>Akses ini hanya tersedia untuk Owner. Akun baru diwajibkan mengganti kata sandi awal.</p><form method="post" class="form-grid">'.csrf_field().'<input type="hidden" name="action" value="module_create_admin_account"><label>Nama lengkap<input name="full_name" maxlength="160" required></label><label>Username<input name="username" pattern="[A-Za-z0-9._-]{4,80}" minlength="4" maxlength="80" required></label><label>Email (opsional)<input type="email" name="email" maxlength="190"></label><label>Kata sandi awal (minimal 20 karakter)<input type="password" name="password" minlength="20" required autocomplete="new-password"></label><div class="full-span"><button class="button button-primary" type="submit">Buat akun Admin Desa →</button></div></form></section>';
+        }
+        $managedRoleSql = ($mvUser['role'] ?? '') === 'owner' ? "'rt','rw','petugas','kepala_desa','admin_desa'" : "'rt','rw','petugas','kepala_desa'";
+        $users=$dbx->query("SELECT u.id,u.username,u.full_name,u.role,u.rt_id,u.rw_id,u.is_active,u.created_at,rt.number_code AS rt_code,rw.number_code AS rw_code,d.name AS dusun_name FROM app_users u LEFT JOIN rt_units rt ON rt.id=u.rt_id LEFT JOIN rw_units rw ON rw.id=COALESCE(u.rw_id,rt.rw_id) LEFT JOIN dusun d ON d.id=rw.dusun_id WHERE u.role IN ({$managedRoleSql}) ORDER BY FIELD(u.role,'rt','rw','petugas','kepala_desa','admin_desa'),d.name,rw.number_code,rt.number_code,u.full_name")->fetchAll();
         echo '<section class="panel"><h2>Daftar akun dan penugasan</h2><p>Nonaktifkan akun yang tidak digunakan; jangan hapus permanen karena riwayat aktivitas harus tetap dapat ditelusuri.</p>';
         if($users) {
             echo '<div class="table-wrap"><table><thead><tr><th>Akun</th><th>Penugasan</th><th>Status</th><th>Tindakan admin</th></tr></thead><tbody>';
@@ -538,7 +542,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         echo '<section class="content-layout">';
         foreach($kinds as $kind=>$meta) {
             $can=true;
-            if(in_array($kind,['residents','families'],true) && !in_array($mvUser['role'],['rt','rw','petugas','admin_desa'],true)) $can=false;
+            if(in_array($kind,['residents','families'],true) && !in_array($mvUser['role'],['rt','rw','petugas','admin_desa','owner'],true)) $can=false;
             if(in_array($kind,['requests','complaints'],true) && !in_array($mvUser['role'],['petugas','admin_desa','owner','kepala_desa'],true)) $can=false;
             if(!$can) continue;
             echo '<div class="panel"><h2>'.e($meta['label']).'</h2><p>'.e($meta['desc']).'</p><form method="get" action="index.php" class="form-stack"><input type="hidden" name="page" value="module-export"><input type="hidden" name="kind" value="'.e($kind).'"><label>Dari tanggal<input type="date" name="from"></label><label>Sampai tanggal<input type="date" name="to"></label><label>Status<select name="status"><option value="">Semua status</option>';
