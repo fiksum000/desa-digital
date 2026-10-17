@@ -53,6 +53,8 @@ jobs:
         run: php tests/schema_integration.php
       - name: Verify identifier migration is idempotent
         run: APP_KEY="$(openssl rand -hex 32)" php bin/migrate_private_identifiers.php
+      - name: Verify service letter migration is idempotent
+        run: php bin/migrate_service_letters.php
       - name: Authenticated RT and document module page smoke tests
         run: |
           APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php rt-data
