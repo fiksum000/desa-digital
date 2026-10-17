@@ -195,6 +195,17 @@ try {
     expect_true($serviceId > 0, 'Default public service types must be seeded');
     $pdo->prepare("INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,?,?)")
         ->execute(['CI-SR-TEST-001',$serviceId,$wargaId,'CI pengajuan',json_encode(['details'=>'CI test'],JSON_THROW_ON_ERROR),'submitted']);
+    $serviceRequestId = (int)$pdo->lastInsertId();
+    $serviceFileKey = bin2hex(random_bytes(24)) . '.pdf';
+    $pdo->prepare('INSERT INTO service_request_files (request_id,storage_key,original_name,mime_type,size_bytes,uploaded_by) VALUES (?,?,?,?,?,?)')
+        ->execute([$serviceRequestId,$serviceFileKey,'ci-private.pdf','application/pdf',1024,$wargaId]);
+    $serviceFileId = (int)$pdo->lastInsertId();
+    $privateServiceFile = $pdo->prepare('SELECT f.id,f.request_id,f.storage_key,sr.applicant_id FROM service_request_files f JOIN service_requests sr ON sr.id=f.request_id WHERE f.id=? LIMIT 1');
+    $privateServiceFile->execute([$serviceFileId]);
+    $serviceFileRow = $privateServiceFile->fetch();
+    expect_true($serviceFileRow && (int)$serviceFileRow['request_id']===$serviceRequestId && (int)$serviceFileRow['applicant_id']===$wargaId, 'Private service attachments must be linked to exactly one request and its owner.');
+    expect_true(module_can_access_service_file(['id'=>$wargaId,'role'=>'warga'],$serviceFileRow), 'The request owner must be authorized for their private attachment.');
+    expect_true(!module_can_access_service_file(['id'=>$rtUserId,'role'=>'rt'],$serviceFileRow), 'RT users must not gain access to private service attachments.');
     $pdo->prepare("INSERT INTO complaints (tracking_code,reporter_id,title,category,description,status) VALUES (?,?,?,'umum',?,'received')")
         ->execute(['CI-PG-TEST-001',$wargaId,'CI pengaduan','Contoh data otomatis untuk tes skema.']);
     $pdo->prepare("INSERT INTO site_content (content_key,content_value,value_type,status,updated_by) VALUES ('ci_test','ok','text','published',?)")
