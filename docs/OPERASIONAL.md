@@ -34,6 +34,14 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 - Buat backup terenkripsi database dan file upload di lokasi terpisah. Uji pemulihan, jangan hanya cek file backup ada.
 - Isi profil desa, kontak, jenis surat, syarat resmi, SOP dan pejabat penyetuju bersama pemerintah desa. Statistik kosong sengaja ditampilkan sebagai tanda strip, bukan angka rekaan.
 
+## Konflik usulan perubahan data
+
+Saat RT mengirim usulan koreksi, perubahan status, atau pindah RT, aplikasi menyimpan sidik HMAC dari data sumber warga, keluarga, serta daftar anggota keluarga saat itu. Nilai NIK/KK mentah tidak disalin ke snapshot.
+
+Pada saat persetujuan akhir, aplikasi mengunci baris sumber yang relevan dan membandingkan sidik data sekarang dengan snapshot saat pengajuan. Jika ada perubahan bersamaan, persetujuan ditahan, tidak ada perubahan resmi yang diterapkan, dan status menjadi **Konflik data**. Petugas/admin dapat membandingkan usulan dengan data terkini; setelah itu admin meminta revisi pada usulan yang sama atau menolak dengan alasan. Untuk mengirim revisi setelah konflik, RT harus mengonfirmasi bahwa data terkini sudah dibandingkan.
+
+Usulan tertunda dari database lama yang tidak memiliki snapshot dipindahkan ke status konflik oleh migrasi, bukan otomatis disetujui. Uji alur ini dengan dua sesi petugas sebelum produksi: kirim usulan di sesi pertama, ubah data sumber pada sesi kedua, lalu pastikan persetujuan sesi pertama menghasilkan konflik dan mempertahankan perubahan baru.
+
 ## Catatan data pribadi
 
 NIK dan nomor KK disimpan sebagai ciphertext yang dienkripsi dengan secretbox libsodium. Kolom yang dipakai pada daftar hanya berisi topeng `************1234`; HMAC berkunci dipakai untuk deteksi duplikasi dan indeks unik tanpa menyimpan nilai asli sebagai kolom pencarian. `APP_KEY` tidak dapat dipulihkan dari database; simpan salinan terenkripsi yang aksesnya sangat terbatas.
