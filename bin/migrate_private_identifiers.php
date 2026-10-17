@@ -45,6 +45,15 @@ migration_add_column($pdo, 'family_records', 'family_number_hash', 'CHAR(64) NUL
 migration_add_column($pdo, 'residents', 'nik_cipher', 'TEXT NULL');
 migration_add_column($pdo, 'residents', 'nik_hash', 'CHAR(64) NULL');
 
+foreach ([
+    ['family_records', 'uq_family_number'],
+    ['residents', 'uq_resident_nik'],
+] as [$table, $oldIndex]) {
+    if (migration_index_exists($pdo, $table, $oldIndex)) {
+        $pdo->exec('ALTER TABLE ' . $table . ' DROP INDEX ' . $oldIndex);
+    }
+}
+
 $familiesUpdated = 0;
 $residentsUpdated = 0;
 $pdo->beginTransaction();
@@ -90,15 +99,6 @@ try {
     if ($pdo->inTransaction()) $pdo->rollBack();
     fwrite(STDERR, "Migrasi dibatalkan: " . $e->getMessage() . "\n");
     exit(1);
-}
-
-foreach ([
-    ['family_records', 'uq_family_number'],
-    ['residents', 'uq_resident_nik'],
-] as [$table, $oldIndex]) {
-    if (migration_index_exists($pdo, $table, $oldIndex)) {
-        $pdo->exec('ALTER TABLE ' . $table . ' DROP INDEX ' . $oldIndex);
-    }
 }
 
 $pdo->exec('ALTER TABLE family_records MODIFY family_number CHAR(16) NOT NULL, MODIFY family_number_cipher TEXT NOT NULL, MODIFY family_number_hash CHAR(64) NOT NULL');
