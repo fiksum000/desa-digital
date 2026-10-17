@@ -304,6 +304,8 @@ $publicViews=load_text('app/module_views.php');$publicHandler=load_text('app/mod
 check_true(str_contains($publicViews,"'hero_cta_apply'=>'") && str_contains($publicViews,"'profile_intro'=>'") && str_contains($publicViews,"'map_title'=>'"), 'CMS must expose editable copy for public pages.');
 check_true(str_contains($publicHandler,"'register_image'") && str_contains($publicHandler,"'news_fallback_image'"), 'CMS handler must allowlist public image values.');
 check_true(str_contains($publicHandler,'module_site_image_value_allowed') && str_contains($publicHandler,'module_site_image_keys'), 'Site image publishing/restoration must validate image keys and paths.');
+check_true(str_contains(load_text('app/bootstrap.php'),"Content-Security-Policy: default-src 'self'") && str_contains(load_text('app/bootstrap.php'),"frame-ancestors 'none'"), 'Public responses must include a restrictive content security policy.');
+check_true(str_contains($publicIndex,'function public_image_src') && str_contains($publicIndex,'public_image_src($article'), 'Public article/news image URLs must be restricted to allowed local files.');
 check_true(str_contains($publicViews,"'admin-site' => ['admin_desa','owner']"), 'Public site CMS must be restricted to Admin Desa and Owner.');
 check_true(str_contains($publicIndex,"site_val('logo_image'") && str_contains($publicIndex,"site_val('login_image'") && str_contains($publicIndex,"site_val('register_image'"), 'Brand and auth images must use CMS-managed values.');
 check_true(str_contains($publicIndex,"site_val('home_news_title'") && str_contains($publicIndex,"site_val('nav_home'") && str_contains($publicIndex,"site_val('footer_summary'"), 'Navigation, home sections, and footer copy must use managed values.');
