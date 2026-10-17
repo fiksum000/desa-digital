@@ -782,6 +782,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
       <a class="dashboard-action" href="<?= e(app_url('admin-budget')) ?>"><span>▦</span><strong>Transparansi</strong><small>Publikasi informasi anggaran</small></a>
       <a class="dashboard-action" href="<?= e(app_url('laporan')) ?>"><span>▥</span><strong>Laporan Desa</strong><small>Lihat dan ekspor laporan</small></a>
       <a class="dashboard-action" href="<?= e(app_url('admin-resident-export')) ?>"><span>⇩</span><strong>Unduh Data Penduduk</strong><small>CSV atau ZIP KTP/KK disetujui</small></a>
+      <a class="dashboard-action" href="<?= e(app_url('admin-audit')) ?>"><span>▤</span><strong>Log Aktivitas</strong><small>Riwayat perubahan dan tindakan penting</small></a>
       <a class="dashboard-action" href="<?= e(app_url('admin')) ?>"><span>≡</span><strong>Pelayanan & Pengaduan</strong><small>Antrean surat, berita, aduan</small></a>
     </div>
   </section>
@@ -812,7 +813,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
   <section class="panel"><h2>Pengaduan warga</h2><?php if($adminComplaints): ?><div class="table-wrap"><table><thead><tr><th>Kode</th><th>Pelapor</th><th>Judul</th><th>Status</th><th>Waktu</th></tr></thead><tbody><?php foreach($adminComplaints as $row): ?><tr><td><?= e($row['tracking_code']) ?></td><td><?= e($row['reporter_name']) ?></td><td><?= e($row['title']) ?></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?= e(date('d M Y',strtotime($row['created_at']))) ?></td></tr><?php endforeach; ?></tbody></table></div><?php else: ?><p>Belum ada pengaduan masuk.</p><?php endif; ?></section>
   <?php endif; ?>
 
-<?php elseif (in_array($page, ['rt-data','rw-rekap','dokumen','perubahan','admin-users','admin-wilayah','admin-site','admin-services','admin-directory','admin-budget','admin-resident-export','laporan','notifikasi','umkm','peta','transparansi','kontak'], true)): ?>
+<?php elseif (in_array($page, ['rt-data','rw-rekap','dokumen','perubahan','admin-users','admin-wilayah','admin-site','admin-services','admin-directory','admin-budget','admin-resident-export','admin-audit','laporan','notifikasi','umkm','peta','transparansi','kontak'], true)): ?>
   <?php require __DIR__ . '/app/module_views.php'; ?>
 <?php else: ?>
   <section class="page-hero"><span class="eyebrow"><?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></span><h1><?= e(site_val('page_unavailable_title','Halaman tidak ditemukan')) ?></h1><p><?= e(site_val('page_unavailable_text','Alamat yang kamu buka tidak tersedia.')) ?></p><a class="button button-primary" href="<?= e(app_url('home')) ?>"><?= e(site_val('page_home_button','Kembali ke beranda')) ?></a></section>
