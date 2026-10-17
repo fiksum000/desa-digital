@@ -245,6 +245,23 @@ check_true(str_contains($compose, 'DB_ROOT_PASSWORD'), 'Compose must require a d
 check_true(str_contains($compose, 'database_data:/var/lib/mysql'), 'Database must use a persistent volume.');
 check_true(!preg_match('/ports:\s*\n\s*-\s*["\']?3306:/m', $compose), 'Database port must not be exposed on the host.');
 
+
+$exportSource = load_text('app/modules.php');
+check_true(str_contains($exportSource, "if(\$role==='rt') { \$whereParts[]='rt.id=?';") && str_contains($exportSource, "elseif(\$role==='rw') { \$whereParts[]='rt.rw_id=?';"), 'Resident/family exports must constrain rows to the logged-in RT/RW scope.');
+check_true(str_contains($exportSource, "module_audit_actor(\$user,'export','report_\$kind'"), 'Sensitive report exports must create an audit record.');
+check_true(str_contains($exportSource, "header('Cache-Control: private, no-store, max-age=0')"), 'Private downloads and report exports must disable shared caching.');
+check_true(module_csv_safe('=1+1') === "'=1+1", 'CSV export must neutralize formula cells starting with equals.');
+check_true(module_csv_safe("  +SUM(A1:A2)") === "'  +SUM(A1:A2)", 'CSV export must neutralize formula cells after leading spaces.');
+check_true(module_csv_safe('@SUM(A1:A2)') === "'@SUM(A1:A2)", 'CSV export must neutralize formula cells starting with at-sign.');
+check_true(module_csv_safe('-1+2') === "'-1+2", 'CSV export must neutralize formula cells starting with hyphen.');
+check_true(module_csv_safe('Warga biasa') === 'Warga biasa', 'CSV export must preserve ordinary text.');
+check_true(!module_can_access_service_file(['id'=>43,'role'=>'warga'], ['applicant_id'=>42,'assigned_to'=>0]), 'A different resident must not access an unassigned request attachment.');
+check_true(!module_can_access_service_file(['id'=>9,'role'=>'rt'], ['applicant_id'=>42,'assigned_to'=>9]), 'RT role must not access service attachments even if its numeric ID matches assignment.');
+check_true(!module_can_access_service_file(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'assigned_to'=>10]), 'A staff member must not access another staff member\'s assigned request attachment.');
+check_true(module_can_access_service_file(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'assigned_to'=>0]), 'Staff must be able to access unassigned requests in the work queue.');
+check_true(!module_can_access_service_letter(['id'=>43,'role'=>'warga'], ['applicant_id'=>42,'status'=>'approved']), 'A different resident must not access another resident\'s issued letter.');
+check_true(!module_can_access_service_letter(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'status'=>'approved']), 'Service letter access policy should be tested separately from attachment access.');
+
 if ($failures) {
     fwrite(STDERR, "FAILED: " . count($failures) . " of {$checks} checks\n");
     foreach ($failures as $failure) fwrite(STDERR, " - {$failure}\n");
