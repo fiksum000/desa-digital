@@ -93,15 +93,6 @@ try {
         'id'=>$userId,'username'=>$username,'full_name'=>'CI Smoke RT','role'=>'rt',
         'rt_id'=>$rtId,'rw_id'=>null,'must_change_password'=>0,'session_version'=>1
     ];
-    smoke_assert(module_is_allowed_rt($_SESSION['user'], $rtId), 'An RT account must access its own active RT.');
-    smoke_assert(!module_is_allowed_rt($_SESSION['user'], $otherRtId), 'An RT account must not access another RT in the same RW.');
-    smoke_assert(!module_is_allowed_rt($_SESSION['user'], $otherRwRtId), 'An RT account must not access an RT in another RW.');
-    $rwUser = $_SESSION['user'];
-    $rwUser['role'] = 'rw';
-    $rwUser['rw_id'] = $rwId;
-    $rwUser['rt_id'] = null;
-    smoke_assert(module_is_allowed_rt($rwUser, $rtId) && module_is_allowed_rt($rwUser, $otherRtId), 'An RW account must access RTs within its own RW.');
-    smoke_assert(!module_is_allowed_rt($rwUser, $otherRwRtId), 'An RW account must not access an RT outside its RW.');
     $_GET = ['page'=>$page];
     if ($page === 'rt-data') $_GET['q'] = 'CI Smoke Resident';
     if ($page === 'notifikasi') $_GET['page'] = 'notifikasi';
@@ -115,6 +106,16 @@ try {
     ob_start();
     require dirname(__DIR__) . '/index.php';
     $html = (string)ob_get_clean();
+
+    smoke_assert(module_is_allowed_rt($_SESSION['user'], $rtId), 'An RT account must access its own active RT.');
+    smoke_assert(!module_is_allowed_rt($_SESSION['user'], $otherRtId), 'An RT account must not access another RT in the same RW.');
+    smoke_assert(!module_is_allowed_rt($_SESSION['user'], $otherRwRtId), 'An RT account must not access an RT in another RW.');
+    $rwUser = $_SESSION['user'];
+    $rwUser['role'] = 'rw';
+    $rwUser['rw_id'] = $rwId;
+    $rwUser['rt_id'] = null;
+    smoke_assert(module_is_allowed_rt($rwUser, $rtId) && module_is_allowed_rt($rwUser, $otherRtId), 'An RW account must access RTs within its own RW.');
+    smoke_assert(!module_is_allowed_rt($rwUser, $otherRwRtId), 'An RW account must not access an RT outside its RW.');
 
     if ($page === 'rt-data') {
         smoke_assert(str_contains($html, 'Daftar penduduk'), 'RT directory heading did not render.');
