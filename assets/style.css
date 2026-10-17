@@ -163,3 +163,11 @@
 .cms-image-preview img{display:block;width:min(100%,300px);height:120px;object-fit:cover;object-position:center;border-radius:10px;background:#edf3e9}
 .cms-image-preview img[hidden]{display:none}
 @media(max-width:640px){.hero-visual>img{height:100%;object-fit:cover}.auth-intro>img{max-height:210px;aspect-ratio:16/9}.cms-image-preview{align-items:flex-start;flex-direction:column}.cms-image-preview img{width:100%;height:auto;max-height:180px;aspect-ratio:16/9}}
+
+
+/* Searchable, long-form CMS remains readable on desktop and phone screens. */
+.cms-setting-search{position:sticky;top:0;z-index:4;padding:14px;border:1px solid #d8e6d8;border-radius:14px;background:#fbfdf8;box-shadow:0 5px 16px rgba(16,62,45,.08)}
+.cms-setting-search label{display:block;margin-bottom:7px;color:var(--green);font-weight:800}
+.cms-setting-search input{width:100%;min-height:44px;border:1px solid #cddfce;border-radius:10px;padding:10px 12px;background:#fff}
+.cms-setting-search small{display:block;margin-top:6px;color:var(--muted)}
+#site-content-form [data-site-setting][hidden],#site-content-form .cms-image-preview[hidden],#site-content-form .cms-subheading[hidden]{display:none!important}
