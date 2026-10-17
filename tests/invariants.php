@@ -260,7 +260,7 @@ check_true(!module_can_access_service_file(['id'=>9,'role'=>'rt'], ['applicant_i
 check_true(!module_can_access_service_file(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'assigned_to'=>10]), 'A staff member must not access another staff member\'s assigned request attachment.');
 check_true(module_can_access_service_file(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'assigned_to'=>0]), 'Staff must be able to access unassigned requests in the work queue.');
 check_true(!module_can_access_service_letter(['id'=>43,'role'=>'warga'], ['applicant_id'=>42,'status'=>'approved']), 'A different resident must not access another resident\'s issued letter.');
-check_true(!module_can_access_service_letter(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'status'=>'approved']), 'Service letter access policy should be tested separately from attachment access.');
+check_true(module_can_access_service_letter(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'status'=>'approved']), 'Authorized service staff must be able to access issued service letters.');
 
 if ($failures) {
     fwrite(STDERR, "FAILED: " . count($failures) . " of {$checks} checks\n");
