@@ -139,6 +139,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('Akun warga berhasil dibuat. Silakan masuk.');
             redirect_to('login');
         } elseif ($action === 'login') {
+            // Keep a small per-session guard as defense in depth, but enforce the real
+            // per-account and per-network limit in the database so new sessions cannot bypass it.
             $now = time();
             if (!isset($_SESSION['login_window']) || $now - (int)$_SESSION['login_window'] > 600) {
                 $_SESSION['login_window'] = $now; $_SESSION['login_failures'] = 0;
@@ -146,14 +148,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ((int)($_SESSION['login_failures'] ?? 0) >= 5) throw new RuntimeException('Terlalu banyak percobaan. Tunggu 10 menit lalu coba kembali.');
             $username = strtolower(trim((string)($_POST['username'] ?? '')));
             $password = (string)($_POST['password'] ?? '');
+            auth_rate_limit_assert_allowed($username);
             $stmt = $pdo->prepare('SELECT id,username,full_name,password_hash,role,rt_id,rw_id,is_active,must_change_password,session_version FROM app_users WHERE username=? LIMIT 1');
             $stmt->execute([$username]);
             $user = $stmt->fetch();
             if (!$user || !(int)$user['is_active'] || !password_verify($password, $user['password_hash'])) {
                 $_SESSION['login_failures'] = (int)($_SESSION['login_failures'] ?? 0) + 1;
+                auth_rate_limit_record_failure($username);
                 usleep(250000);
                 throw new RuntimeException('Username atau kata sandi tidak cocok.');
             }
+            auth_rate_limit_clear_account($username);
             session_regenerate_id(true);
             unset($user['password_hash'], $user['is_active']);
             $_SESSION['user'] = $user;
