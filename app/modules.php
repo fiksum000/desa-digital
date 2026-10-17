@@ -688,35 +688,99 @@ function module_handle_post(): void {
                 if ($decision==='approve' && ($user['role'] ?? '')!=='admin_desa') throw new RuntimeException('Persetujuan akhir usulan perubahan hanya oleh Admin Desa.');
                 if ($decision==='reject' && ($user['role'] ?? '')!=='admin_desa') throw new RuntimeException('Penolakan akhir usulan hanya oleh Admin Desa.');
                 if ($decision!=='approve' && mb_strlen($note)<4) throw new RuntimeException('Isi alasan untuk meminta revisi atau menolak.');
-                $stmt=$pdo->prepare("SELECT * FROM resident_change_requests WHERE id=? AND status IN ('submitted','in_review','revision_requested') LIMIT 1"); $stmt->execute([$id]); $request=$stmt->fetch();
-                if (!$request) throw new RuntimeException('Usulan tidak ditemukan atau sudah selesai.');
-                $newStatus=['approve'=>'approved','revision_requested'=>'revision_requested','reject'=>'rejected'][$decision];
+
                 $pdo->beginTransaction();
-                if ($decision==='approve') {
-                    $data=json_decode((string)$request['proposed_data'],true) ?: [];
-                    $resident=$request['resident_id'] ? module_resident_scope($user,(int)$request['resident_id']) : null;
-                    if ($request['change_type']==='move_rt') {
-                        $target=(int)$request['target_rt_id'];
-                        if (!$target) throw new RuntimeException('RT tujuan kosong.');
-                        $familyId=(int)$request['family_id'];
-                        $pdo->prepare('UPDATE family_records SET rt_id=? WHERE id=?')->execute([$target,$familyId]);
-                        $pdo->prepare('UPDATE residents SET rt_id=? WHERE family_id=?')->execute([$target,$familyId]);
-                        $pdo->prepare('UPDATE resident_documents SET rt_id=? WHERE family_id=?')->execute([$target,$familyId]);
-                        $pdo->prepare('UPDATE resident_documents SET rt_id=? WHERE resident_id IN (SELECT id FROM residents WHERE family_id=?)')->execute([$target,$familyId]);
-                    } elseif ($request['change_type']==='deceased' && $resident) {
-                        $pdo->prepare("UPDATE residents SET resident_status='deceased',reviewed_by=?,reviewed_at=NOW() WHERE id=?")->execute([(int)$user['id'],(int)$resident['id']]);
-                    } elseif ($resident) {
-                        $allowed=['full_name','birth_date','gender','phone'];
-                        $sets=[]; $values=[];
-                        foreach($allowed as $key) if(array_key_exists($key,$data)) {$sets[]="{$key}=?";$values[]=$data[$key]!==''?$data[$key]:null;}
-                        if($sets){$values[]=(int)$resident['id'];$pdo->prepare('UPDATE residents SET '.implode(',',$sets).',reviewed_by=?,reviewed_at=NOW() WHERE id=?')->execute(array_merge(array_slice($values,0,-1),[(int)$user['id'],end($values)]));}
-                        if (isset($data['address'])) $pdo->prepare('UPDATE family_records SET address=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?')->execute([$data['address'],(int)$user['id'],(int)$request['family_id']]);
+                try {
+                    $stmt=$pdo->prepare("SELECT * FROM resident_change_requests WHERE id=? AND status IN ('submitted','in_review','revision_requested','conflict') LIMIT 1 FOR UPDATE");
+                    $stmt->execute([$id]); $request=$stmt->fetch();
+                    if (!$request) throw new RuntimeException('Usulan tidak ditemukan atau sudah selesai.');
+                    $wasConflict = (string)$request['status'] === 'conflict';
+                    if ($wasConflict && $decision==='approve') {
+                        throw new RuntimeException('Usulan berstatus konflik tidak dapat langsung disetujui. Bandingkan data terkini lalu minta RT mengirim revisi, atau tolak dengan alasan.');
                     }
+
+                    if ($decision==='approve' && !module_change_snapshot_matches($request)) {
+                        $conflictNote='[KONFLIK] Data penduduk atau keluarga berubah setelah usulan dikirim. Sistem menahan persetujuan agar tidak menimpa data yang lebih baru. Admin Desa harus membandingkan data terkini, kemudian meminta RT mengirim revisi pada usulan yang sama.';
+                        $pdo->prepare("UPDATE resident_change_requests SET status='conflict',review_note=?,reviewed_by=?,reviewed_at=NOW(),updated_at=NOW() WHERE id=?")
+                            ->execute([$conflictNote,(int)$user['id'],(int)$id]);
+                        module_audit_actor($user,'conflict_detected','resident_change_requests',(int)$id,['status'=>$request['status']],['status'=>'conflict','reason'=>'source_snapshot_mismatch']);
+                        $pdo->commit();
+                        flash('Persetujuan ditahan: data sumber berubah setelah usulan dibuat. Usulan ditandai konflik; tidak ada data resmi yang ditimpa.','warning');
+                        redirect_to('perubahan');
+                    }
+
+                    $data=json_decode((string)$request['proposed_data'],true) ?: [];
+                    if ($decision==='approve') {
+                        $resident=$request['resident_id'] ? module_resident_scope($user,(int)$request['resident_id']) : null;
+                        if (!$resident || (int)$resident['family_id'] !== (int)$request['family_id']) {
+                            throw new RuntimeException('Data sumber tidak lagi cocok dengan usulan ini. Persetujuan dibatalkan.');
+                        }
+                        if ($request['change_type']==='move_rt') {
+                            $target=(int)$request['target_rt_id'];
+                            if (!$target) throw new RuntimeException('RT tujuan kosong.');
+                            $targetCheck=$pdo->prepare('SELECT rt.id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.is_active=1 AND rw.is_active=1 LIMIT 1 FOR UPDATE');
+                            $targetCheck->execute([$target]);
+                            if (!$targetCheck->fetchColumn()) {
+                                $conflictNote='[KONFLIK] RT/RW tujuan sudah tidak aktif atau berubah. Admin Desa harus meminta RT memilih wilayah tujuan yang masih aktif.';
+                                $pdo->prepare("UPDATE resident_change_requests SET status='conflict',review_note=?,reviewed_by=?,reviewed_at=NOW(),updated_at=NOW() WHERE id=?")
+                                    ->execute([$conflictNote,(int)$user['id'],(int)$id]);
+                                module_audit_actor($user,'conflict_detected','resident_change_requests',(int)$id,['status'=>$request['status']],['status'=>'conflict','reason'=>'inactive_target_rt']);
+                                $pdo->commit();
+                                flash('Persetujuan pindah ditahan karena RT/RW tujuan tidak aktif. Usulan ditandai konflik.','warning');
+                                redirect_to('perubahan');
+                            }
+                            $familyId=(int)$request['family_id'];
+                            $pdo->prepare('UPDATE family_records SET rt_id=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?')->execute([$target,(int)$user['id'],$familyId]);
+                            $pdo->prepare('UPDATE residents SET rt_id=?,reviewed_by=?,reviewed_at=NOW() WHERE family_id=?')->execute([$target,(int)$user['id'],$familyId]);
+                            $pdo->prepare('UPDATE resident_documents SET rt_id=? WHERE family_id=?')->execute([$target,$familyId]);
+                            $pdo->prepare('UPDATE resident_documents SET rt_id=? WHERE resident_id IN (SELECT id FROM residents WHERE family_id=?)')->execute([$target,$familyId]);
+                        } elseif ($request['change_type']==='deceased') {
+                            $pdo->prepare("UPDATE residents SET resident_status='deceased',reviewed_by=?,reviewed_at=NOW() WHERE id=?")
+                                ->execute([(int)$user['id'],(int)$resident['id']);
+                        } elseif ($request['change_type']==='update') {
+                            $allowed=['full_name','birth_date','gender','phone'];
+                            $sets=[]; $values=[];
+                            foreach($allowed as $key) {
+                                if(array_key_exists($key,$data)) {
+                                    if($key==='full_name' && (mb_strlen(trim((string)$data[$key]))<3 || mb_strlen((string)$data[$key])>160)) throw new RuntimeException('Nama yang diusulkan belum valid.');
+                                    if($key==='gender' && !in_array($data[$key],['L','P','unknown'],true)) throw new RuntimeException('Jenis kelamin yang diusulkan belum valid.');
+                                    if($key==='birth_date' && $data[$key]!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',(string)$data[$key])) throw new RuntimeException('Tanggal lahir yang diusulkan belum valid.');
+                                    $sets[]="{$key}=?";
+                                    $values[]=$data[$key]!==''?$data[$key]:null;
+                                }
+                            }
+                            if($sets) {
+                                $values[]=(int)$resident['id'];
+                                $pdo->prepare('UPDATE residents SET '.implode(',',$sets).',reviewed_by=?,reviewed_at=NOW() WHERE id=?')
+                                    ->execute(array_merge(array_slice($values,0,-1),[(int)$user['id'],end($values)]));
+                            }
+                            if (array_key_exists('address',$data)) {
+                                $address=trim((string)$data['address']);
+                                if(mb_strlen($address)<5 || mb_strlen($address)>1000) throw new RuntimeException('Alamat yang diusulkan belum valid.');
+                                $pdo->prepare('UPDATE family_records SET address=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?')
+                                    ->execute([$address,(int)$user['id'],(int)$request['family_id']]);
+                            }
+                        } else {
+                            throw new RuntimeException('Jenis usulan ini belum didukung untuk persetujuan otomatis. Minta revisi atau pemeriksaan khusus.');
+                        }
+                    }
+
+                    $newStatus=['approve'=>'approved','revision_requested'=>'revision_requested','reject'=>'rejected'][$decision];
+                    $savedNote=$note;
+                    if($decision==='revision_requested' && $wasConflict) {
+                        $savedNote='[KONFLIK] ' . $note;
+                    }
+                    $pdo->prepare('UPDATE resident_change_requests SET status=?,review_note=?,reviewed_by=?,reviewed_at=NOW(),updated_at=NOW() WHERE id=?')
+                        ->execute([$newStatus,$savedNote!==' ' && $savedNote!==''?$savedNote:null,(int)$user['id'],(int)$id]);
+                    module_audit_actor($user,$decision==='approve'?'approve_change':($decision==='reject'?'reject_change':'request_change_revision'),
+                        'resident_change_requests',(int)$id,['status'=>$request['status']],['status'=>$newStatus,'review_note'=>$savedNote,'snapshot_checked'=>$decision==='approve']);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
                 }
-                $pdo->prepare('UPDATE resident_change_requests SET status=?,review_note=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?')->execute([$newStatus,$note!==''?$note:null,(int)$user['id'],(int)$id]);
-                module_audit_actor($user,'review_change','resident_change_requests',$id,['status'=>$request['status']],['status'=>$newStatus,'review_note'=>$note]);
-                $pdo->commit();
-                flash('Keputusan usulan tersimpan.'); redirect_to('perubahan');
+                flash($decision==='approve'?'Usulan disetujui dan data resmi diperbarui secara tercatat.':($decision==='reject'?'Usulan ditolak dengan alasan tercatat.':'RT diminta memperbaiki usulan pada nomor yang sama.'));
+                redirect_to('perubahan');
             }
             case 'module_upload_document': {
                 $user = module_require_role(['rt','petugas','admin_desa']);
