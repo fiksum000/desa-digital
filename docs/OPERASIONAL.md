@@ -73,6 +73,19 @@ NIK dan nomor KK disimpan sebagai ciphertext yang dienkripsi dengan secretbox li
 
 Jika database lama sudah dibuat dari skema yang menyimpan NIK/KK sebagai teks biasa atau belum memiliki tabel pembatasan login, ambil backup database dan APP_KEY terlebih dahulu lalu jalankan `php bin/migrate_private_identifiers.php` dari container web yang dipercaya setelah APP_KEY diatur dengan benar. Skrip berhenti jika kunci salah, data tidak bisa dinormalisasi, atau ditemukan duplikasi; jangan melewati error migrasi dengan mengubah data secara manual. Jangan pernah commit file .env, salinan database, NIK/KK, foto identitas, atau berkas warga ke GitHub. Semua lampiran warga wajib berada di penyimpanan privat dengan otorisasi per permintaan. Isi database dummy hanya boleh dipakai untuk pengujian.
 
+## Penerbitan nomor dan PDF surat
+
+1. Pada **Admin Desa → Tampilan Website**, isi lalu terbitkan Nama desa, Alamat kantor desa, Kabupaten/Kota, Provinsi, dan Nama kepala desa/pejabat penandatangan. Kecamatan, jabatan penandatangan, serta kontak kantor bersifat opsional.
+2. Petugas memeriksa permohonan dan mengubah statusnya ke **Dalam pemeriksaan**. Hanya admin desa atau kepala desa yang dapat memberi persetujuan akhir.
+3. Setelah status **Disetujui**, admin desa atau kepala desa memasukkan nomor surat sesuai buku agenda dan aturan penomoran resmi desa. Nomor disimpan unik; kop surat disalin sebagai snapshot sehingga perubahan profil desa tidak mengubah surat yang sudah diterbitkan.
+4. Periksa PDF melalui tautan **Unduh surat PDF**. Setelah benar dan siap diserahkan, ubah status menjadi **Siap diambil**. Sistem menolak perubahan ke status tersebut bila nomor surat belum ada.
+5. Pemohon hanya dapat mengunduh PDF miliknya sendiri. Petugas, admin desa, dan kepala desa dapat mengakses PDF sesuai kebutuhan pekerjaan; akses dicatat dalam audit log. RT/RW dan pengguna lain tidak mendapat akses ke endpoint PDF.
+
+**Catatan format:** PDF saat ini adalah templat umum yang memuat data permohonan, nomor surat, kop desa, dan penandatangan. Desa tetap harus menyesuaikan isi tiap jenis surat, dasar hukum, persyaratan, format, dan prosedur tanda tangan/cap sesuai SOP sebelum dokumen dipakai sebagai surat resmi. Jangan gunakan data warga sungguhan sampai peninjauan ini, uji akses antar-RT, backup, dan pemulihan selesai.
+
+Pada database yang sudah ada, jalankan migrasi yang aman diulang dari container web setelah mengambil backup:
+`docker compose exec web php bin/migrate_service_letters.php`
+
 ## Pembaruan dari GitHub
 
 Setelah versi diuji dan disetujui: masuk ke direktori proyek, periksa branch dan perubahan lokal, jalankan backup, lalu gunakan `git pull --ff-only origin main`. Setelah itu rebuild image dan smoke-test semua alur sebelum membuka lagi ke warga. Jangan melakukan pull langsung ke produksi tanpa backup.
