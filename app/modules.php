@@ -335,6 +335,80 @@ function module_handle_post(): void {
                 module_audit_actor($user,'create','rw_account',$id,null,['rw_id'=>$rwId,'username'=>$username]);
                 flash('Akun RW berhasil dibuat.'); redirect_to('admin-users');
             }
+            case 'module_import_residents': {
+                $user = module_require_role(['rt','admin_desa']);
+                $rtId = ($user['role']==='rt') ? (int)($user['rt_id'] ?? 0) : (int)(filter_input(INPUT_POST,'rt_id',FILTER_VALIDATE_INT) ?: 0);
+                if(!module_is_allowed_rt($user,$rtId)) throw new RuntimeException('Pilih wilayah RT yang valid.');
+                $file=$_FILES['import_csv'] ?? [];
+                if(($file['error'] ?? UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'] ?? '')) throw new RuntimeException('Pilih file CSV yang akan diimpor.');
+                if((int)($file['size'] ?? 0)<1 || (int)$file['size']>5*1024*1024) throw new RuntimeException('Ukuran CSV maksimal 5 MB.');
+                if(strtolower(pathinfo((string)($file['name']??''),PATHINFO_EXTENSION))!=='csv') throw new RuntimeException('File impor harus memiliki ekstensi .csv. Simpan Excel sebagai CSV UTF-8 terlebih dahulu.');
+                $parsed=module_read_resident_csv((string)$file['tmp_name']);
+                $rows=$parsed['rows'];$errors=$parsed['errors'];
+                if(count($rows)>1000) throw new RuntimeException('Maksimal 1.000 baris warga per impor. Bagi file menjadi beberapa bagian.');
+                $stmt=$pdo->prepare('SELECT id FROM residents WHERE nik=? LIMIT 1');
+                $validRows=[];
+                foreach($rows as $row) {
+                    $stmt->execute([$row['nik']]);
+                    if($stmt->fetchColumn()) $errors[]="Baris {$row['line']}: NIK sudah terdaftar atau diarsipkan. Admin harus memeriksa kemungkinan data ganda/pindah.";
+                    else $validRows[]=$row;
+                }
+                $groups=[];
+                foreach($validRows as $row) $groups[$row['family_number']][]=$row;
+                $familiesCreated=0;$residentsCreated=0;
+                $pdo->beginTransaction();
+                try {
+                    foreach($groups as $familyNumber=>$familyRows) {
+                        $addresses=array_unique(array_map(static fn($row)=>$row['address'],$familyRows));
+                        if(count($addresses)>1) {
+                            foreach($familyRows as $row) $errors[]="Baris {$row['line']}: alamat dalam satu nomor KK berbeda. Perbaiki file dan impor kembali.";
+                            continue;
+                        }
+                        $stmt=$pdo->prepare('SELECT id,rt_id,status,address,head_resident_id FROM family_records WHERE family_number=? LIMIT 1');
+                        $stmt->execute([$familyNumber]);$family=$stmt->fetch();
+                        if($family) {
+                            if((int)$family['rt_id']!==$rtId || $family['status']==='archived') {
+                                foreach($familyRows as $row) $errors[]="Baris {$row['line']}: nomor KK sudah ada di catatan lain/arsip. Minta Admin Desa memeriksa, jangan membuat KK kedua.";
+                                continue;
+                            }
+                            $familyId=(int)$family['id'];
+                            if(trim((string)$family['address'])!==trim((string)$familyRows[0]['address'])) {
+                                foreach($familyRows as $row) $errors[]="Baris {$row['line']}: alamat berbeda dari data keluarga yang ada. Ajukan koreksi resmi terlebih dahulu.";
+                                continue;
+                            }
+                        } else {
+                            $stmt=$pdo->prepare("INSERT INTO family_records (family_number,rt_id,address,status,created_by) VALUES (?,?,?,'pending_review',?)");
+                            $stmt->execute([$familyNumber,$rtId,$familyRows[0]['address'],(int)$user['id']]);
+                            $familyId=(int)$pdo->lastInsertId();$familiesCreated++;
+                        }
+                        foreach($familyRows as $row) {
+                            $stmt=$pdo->prepare('SELECT id FROM residents WHERE nik=? LIMIT 1');
+                            $stmt->execute([$row['nik']]);
+                            if($stmt->fetchColumn()) { $errors[]="Baris {$row['line']}: NIK baru saja tercatat oleh proses lain; baris dilewati."; continue; }
+                            $relation=$row['relationship_to_head'];
+                            if(!$family['head_resident_id'] ?? false) { /* head will be set below after first successful insert */ }
+                            if((int)($family['head_resident_id'] ?? 0)>0 && $relation==='') $relation='Anggota keluarga';
+                            $stmt=$pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,full_name,birth_date,gender,phone,relationship_to_head,resident_status,created_by) VALUES (?,?,?,?,?,?,?,?, 'pending_review',?)");
+                            $stmt->execute([$familyId,$rtId,$row['nik'],$row['full_name'],$row['birth_date'],$row['gender'],$row['phone']!==''?$row['phone']:null,$relation!==''?$relation:null,(int)$user['id']]);
+                            $residentId=(int)$pdo->lastInsertId();$residentsCreated++;
+                            if(!$family || (int)($family['head_resident_id'] ?? 0)===0) {
+                                $pdo->prepare('UPDATE family_records SET head_resident_id=? WHERE id=? AND head_resident_id IS NULL')->execute([$residentId,$familyId]);
+                                $family['head_resident_id']=$residentId;
+                            }
+                            module_audit_actor($user,'import_create','residents',$residentId,null,['family_id'=>$familyId,'rt_id'=>$rtId,'nik_last4'=>substr($row['nik'],-4),'status'=>'pending_review','source_line'=>$row['line']]);
+                        }
+                    }
+                    $pdo->commit();
+                } catch(Throwable $e) {
+                    if($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
+                }
+                module_audit_actor($user,'import_csv','resident_import',null,null,['rt_id'=>$rtId,'families_created'=>$familiesCreated,'residents_created'=>$residentsCreated,'error_count'=>count($errors)]);
+                $message="Impor selesai: {$residentsCreated} warga dimasukkan sebagai menunggu pemeriksaan; {$familiesCreated} keluarga baru dibuat.";
+                if($errors) $message.=" Masalah: ".implode(' ' ,array_slice($errors,0,15)).(count($errors)>15?' Dan '.(count($errors)-15).' masalah lainnya.':'');
+                flash($message,$errors?'warn':'success');
+                redirect_to('rt-data');
+            }
             case 'module_save_resident_family': {
                 $user = module_require_role(['rt','admin_desa']);
                 $rtId = ($user['role']==='rt') ? (int)($user['rt_id'] ?? 0) : (int)(filter_input(INPUT_POST,'rt_id',FILTER_VALIDATE_INT) ?: 0);
@@ -767,7 +841,7 @@ function module_handle_post(): void {
         $fallback = match ($action) {
             'module_create_rt_account','module_update_rt_user','module_create_rw_account','module_create_staff_account','module_reassign_rt_account' => 'admin-users',
             'module_create_dusun','module_create_rw' => 'admin-wilayah',
-            'module_save_resident_family','module_add_resident' => 'rt-data',
+            'module_save_resident_family','module_add_resident','module_import_residents' => 'rt-data',
             'module_submit_change','module_resubmit_change','module_review_change','module_review_resident' => 'perubahan',
             'module_upload_document','module_review_document' => 'dokumen',
             'module_save_site','module_publish_site_revision','module_restore_site_version' => 'admin-site',
