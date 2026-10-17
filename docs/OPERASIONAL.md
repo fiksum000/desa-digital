@@ -26,6 +26,7 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 ## Keamanan sebelum publik
 
 - Pasang HTTPS dan aktifkan cookie sesi Secure.
+- Bootstrap aplikasi meminta PHP menggunakan session ID ketat, cookie-only, dan tidak meneruskan ID sesi di URL. Verifikasi nilai efektif `session.use_strict_mode=1`, `session.use_only_cookies=1`, `session.use_cookies=1`, dan `session.use_trans_sid=0` di staging; kebijakan hosting dapat membatasi `ini_set()`.
 - Uji bahwa file di `storage/uploads` tidak bisa dibuka melalui URL publik.
 - Pastikan setiap aksi admin/Owner diperiksa di sisi server, tidak hanya dengan menyembunyikan menu.
 - Uji akun dari RT berbeda agar tidak dapat mengakses warga, laporan, atau dokumen RT lain.
