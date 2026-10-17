@@ -301,7 +301,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         }
         $where='';$params=[];
         if($role==='rt') {$where=' WHERE cr.source_rt_id=?';$params[]=(int)$mvUser['rt_id'];}
-        $stmt=$dbx->prepare("SELECT cr.*,r.full_name,RIGHT(r.nik,4) AS nik_last4,st.number_code AS source_rt,dt.number_code AS target_rt,u.full_name AS submitter FROM resident_change_requests cr LEFT JOIN residents r ON r.id=cr.resident_id JOIN rt_units st ON st.id=cr.source_rt_id LEFT JOIN rt_units dt ON dt.id=cr.target_rt_id JOIN app_users u ON u.id=cr.submitted_by{$where} ORDER BY cr.created_at DESC LIMIT 100");
+        $stmt=$dbx->prepare("SELECT cr.*,r.full_name,r.birth_date,r.gender,r.phone,RIGHT(r.nik,4) AS nik_last4,f.address AS current_address,st.number_code AS source_rt,dt.number_code AS target_rt,u.full_name AS submitter FROM resident_change_requests cr LEFT JOIN residents r ON r.id=cr.resident_id LEFT JOIN family_records f ON f.id=cr.family_id JOIN rt_units st ON st.id=cr.source_rt_id LEFT JOIN rt_units dt ON dt.id=cr.target_rt_id JOIN app_users u ON u.id=cr.submitted_by{$where} ORDER BY cr.created_at DESC LIMIT 100");
         $stmt->execute($params);$requests=$stmt->fetchAll();
         echo '<section class="panel"><h2>Usulan perubahan & perpindahan</h2>';
         if($requests) { echo '<div class="table-wrap"><table><thead><tr><th>Usulan</th><th>Alasan / data yang diusulkan</th><th>Status</th><th>Aksi pemeriksa</th></tr></thead><tbody>';
@@ -309,8 +309,19 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 $data=json_decode((string)$r['proposed_data'],true) ?: [];
                 $summary=[];
                 foreach($data as $k=>$v) if($v!=='' && $v!==null) $summary[]=$k.': '.(string)$v;
-                echo '<tr><td><strong>'.e($r['full_name']??'Penduduk diarsipkan').'</strong><small>'.e($r['change_type']).' · RT '.e($r['source_rt']).($r['target_rt']?' → RT '.e($r['target_rt']):'').'</small><small>'.e(date('d M Y H:i',strtotime($r['created_at']))).'</small></td><td>'.e($r['reason']).'<small>'.e(implode(' · ',$summary) ?: 'Tidak ada field tambahan').'</small>';
-                if(!empty($r['review_note'])) echo '<small>Catatan petugas: '.e($r['review_note']).'</small>';
+                $isConflict=(string)$r['status']==='conflict';
+                echo '<tr><td><strong>'.e($r['full_name']??'Penduduk diarsipkan').'</strong><small>'.e($r['change_type']).' · RT '.e($r['source_rt']).($r['target_rt']?' → RT '.e($r['target_rt']):'').'</small><small>'.e(date('d M Y H:i',strtotime($r['created_at']))).'</small></td><td>'.e($r['reason']).'<small><strong>Usulan:</strong> '.e(implode(' · ',$summary) ?: 'Tidak ada field tambahan').'</small>';
+                if($isConflict && in_array($role,['petugas','admin_desa'],true)) {
+                    $currentSummary=[];
+                    if(!empty($r['full_name'])) $currentSummary[]='Nama: '.$r['full_name'];
+                    if(!empty($r['birth_date'])) $currentSummary[]='Tanggal lahir: '.$r['birth_date'];
+                    if(!empty($r['gender'])) $currentSummary[]='Jenis kelamin: '.$r['gender'];
+                    if(!empty($r['phone'])) $currentSummary[]='Kontak: '.$r['phone'];
+                    if(!empty($r['current_address'])) $currentSummary[]='Alamat keluarga: '.$r['current_address'];
+                    if(!empty($r['nik_last4'])) $currentSummary[]='NIK akhir: '.$r['nik_last4'];
+                    echo '<small><strong>Data saat ini untuk dibandingkan:</strong> '.e(implode(' · ',$currentSummary) ?: 'Tidak ada data aktif untuk dibandingkan').'</small>';
+                }
+                if(!empty($r['review_note'])) echo '<small>Catatan pemeriksa: '.e($r['review_note']).'</small>';
                 echo '</td><td><span class="status-pill '.e(status_class($r['status'])).'">'.e(status_text($r['status'])).'</span></td><td>';
                 if($role==='rt' && $r['status']==='revision_requested' && (int)$r['submitted_by']===(int)$mvUser['id']) {
                     echo '<details class="revise-details"><summary>Perbaiki usulan</summary><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="module_resubmit_change"><input type="hidden" name="change_id" value="'.(int)$r['id'].'">';
@@ -321,12 +332,18 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                         foreach(module_rt_options() as $targetOption) echo '<option value="'.(int)$targetOption['id'].'"'.((int)$targetOption['id']===(int)$r['target_rt_id']?' selected':'').'>'.e(($targetOption['dusun_name']??'Dusun -').' / RW '.$targetOption['rw_code'].' / RT '.$targetOption['number_code']).'</option>';
                         echo '</select></label>';
                     }
+                    if(str_starts_with((string)($r['review_note'] ?? ''),'[KONFLIK]')) {
+                        echo '<label class="checkbox-label"><input type="checkbox" name="confirm_current_data" value="1" required> Saya sudah membandingkan usulan dengan data terkini.</label>';
+                    }
                     echo '<label>Alasan revisi<textarea name="reason" rows="3" minlength="8" maxlength="1000" required>'.e($r['reason']).'</textarea></label><button class="button button-small button-primary" type="submit">Kirim revisi pada usulan yang sama</button></form></details>';
                 }
-                if(in_array($role,['petugas','admin_desa'],true) && in_array($r['status'],['submitted','in_review','revision_requested'],true)) {
+                if(in_array($role,['petugas','admin_desa'],true) && in_array($r['status'],['submitted','in_review','revision_requested','conflict'],true)) {
                     echo '<form method="post" class="status-form">'.csrf_field().'<input type="hidden" name="action" value="module_review_change"><input type="hidden" name="change_id" value="'.(int)$r['id'].'"><select name="decision"><option value="revision_requested">Minta revisi</option>';
-                    if($role==='admin_desa') echo '<option value="approve">Setujui</option><option value="reject">Tolak</option>';
-                    echo '</select><input name="review_note" maxlength="1000" placeholder="Catatan keputusan"><button class="button button-small button-primary" type="submit">Simpan</button></form>';
+                    if($role==='admin_desa') {
+                        if(!$isConflict) echo '<option value="approve">Setujui</option>';
+                        echo '<option value="reject">Tolak</option>';
+                    }
+                    echo '</select><input name="review_note" maxlength="1000" placeholder="'.($isConflict?'Alasan/hasil pemeriksaan konflik':'Catatan keputusan').'" required><button class="button button-small button-primary" type="submit">Simpan</button></form>';
                 } else echo '—';
                 echo '</td></tr>';
             }
