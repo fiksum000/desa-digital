@@ -329,7 +329,7 @@ try {
     }
     if ($page === 'article') {
         $slug = trim((string)($_GET['slug'] ?? ''));
-        $stmt = $pdo->prepare("SELECT * FROM news_posts WHERE slug=? AND status='published' AND (publish_at IS NULL OR publish_at<=NOW()) AND (expire_at IS NULL OR expire_at>NOW()) LIMIT 1");
+        $stmt = $pdo->prepare("SELECT * FROM news_posts WHERE slug=? AND status='published' AND (publish_at IS NULL OR publish_at <= UTC_TIMESTAMP()) AND (expire_at IS NULL OR expire_at > UTC_TIMESTAMP()) AND (publish_at IS NULL OR publish_at<=NOW()) AND (expire_at IS NULL OR expire_at>NOW()) LIMIT 1");
         $stmt->execute([$slug]); $article = $stmt->fetch() ?: null;
     }
     if ($page === 'dashboard' && $viewer) {
