@@ -83,10 +83,18 @@ function site_image_val(string $key, string $default = ''): string {
     if (!in_array($key, $imageKeys, true)) return $default;
     $value = trim(site_val($key, ''));
     if ($value === '') return $default;
-    $staticImages = ['assets/village-hero.svg','assets/village-hero.webp'];
-    if (in_array($value, $staticImages, true)) return $value;
-    if (preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#D', $value) === 1) return $value;
-    return $default;
+    return public_image_src($value, $default);
+}
+
+/**
+ * Only allow image paths created by this application or its shipped local assets.
+ * This check also protects news/directory image references if a database row is corrupt.
+ */
+function public_image_src(?string $candidate, string $default = 'assets/village-hero.webp'): string {
+    $value = trim((string)$candidate);
+    if ($value === '') return $default;
+    if (in_array($value, ['assets/village-hero.svg','assets/village-hero.webp'], true)) return $value;
+    return preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#D', $value) === 1 ? $value : $default;
 }
 
 if ($viewer && !empty($viewer['must_change_password'])) {
@@ -669,7 +677,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
       <div class="news-grid">
       <?php foreach (array_slice($news,0,3) as $item): ?>
         <article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>">
-          <?php if (!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?>
+          <?php if (!empty($item['image_key'])): ?><img src="<?= e(public_image_src($item['image_key'] ?? null,site_image_val('news_fallback_image','assets/village-hero.svg'))) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?>
           <span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a>
           <div class="news-content"><time><?= e(date('d M Y', strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><a class="news-arrow" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>" aria-label="Baca berita">→</a></div></article>
       <?php endforeach; ?>
@@ -713,11 +721,11 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
 
 <?php elseif ($page === 'berita'): ?>
   <section class="page-hero"><span class="eyebrow"><?= e(site_val('news_eyebrow','Kabar Desa')) ?></span><h1><?= e(site_val('news_title','Berita & Pengumuman')) ?></h1><p><?= e(site_val('news_intro','Informasi kegiatan, program, dan pengumuman resmi desa.')) ?></p></section>
-  <?php if ($news): ?><div class="news-grid news-grid-wide"><?php foreach($news as $item): ?><article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?php if(!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?><span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a><div class="news-content"><time><?= e(date('d M Y',strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><p><?= e($item['excerpt'] ?? '') ?></p></div></article><?php endforeach; ?></div><?php else: ?><div class="empty-news"><div><strong><?= e(site_val('news_empty_title','Belum ada berita yang diterbitkan.')) ?></strong><p><?= e(site_val('news_empty_text','Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.')) ?></p></div></div><?php endif; ?>
+  <?php if ($news): ?><div class="news-grid news-grid-wide"><?php foreach($news as $item): ?><article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?php if(!empty($item['image_key'])): ?><img src="<?= e(public_image_src($item['image_key'] ?? null,site_image_val('news_fallback_image','assets/village-hero.svg'))) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?><span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a><div class="news-content"><time><?= e(date('d M Y',strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><p><?= e($item['excerpt'] ?? '') ?></p></div></article><?php endforeach; ?></div><?php else: ?><div class="empty-news"><div><strong><?= e(site_val('news_empty_title','Belum ada berita yang diterbitkan.')) ?></strong><p><?= e(site_val('news_empty_text','Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.')) ?></p></div></div><?php endif; ?>
 
 <?php elseif ($page === 'article'): ?>
   <?php if (!$article): ?><section class="page-hero"><h1><?= e(site_val('article_notfound_title','Berita tidak ditemukan')) ?></h1><p><?= e(site_val('article_notfound_intro','Berita mungkin sudah diarsipkan atau alamatnya salah.')) ?></p><a class="button button-primary" href="<?= e(app_url('berita')) ?>"><?= e(site_val('article_back_label','Kembali ke berita')) ?></a></section>
-  <?php else: ?><article class="article-page"><?php if(!empty($article['image_key'])): ?><img class="article-cover" src="<?= e($article['image_key']) ?>" alt="<?= e($article['alt_text'] ?: $article['title']) ?>"><?php endif; ?><span class="eyebrow"><?= e(strtoupper($article['category'])) ?></span><h1><?= e($article['title']) ?></h1><p class="muted"><?= e(date('d M Y',strtotime($article['publish_at'] ?: $article['created_at']))) ?></p><?php if($article['excerpt']): ?><p class="article-excerpt"><?= e($article['excerpt']) ?></p><?php endif; ?><div class="article-body"><?= nl2br(e($article['body'])) ?></div><a class="text-link" href="<?= e(app_url('berita')) ?>"><?= e(site_val('article_body_back_label','← Kembali ke berita')) ?></a></article><?php endif; ?>
+  <?php else: ?><article class="article-page"><?php if(!empty($article['image_key'])): ?><img class="article-cover" src="<?= e(public_image_src($article['image_key'] ?? null,site_image_val('news_fallback_image','assets/village-hero.svg'))) ?>" alt="<?= e($article['alt_text'] ?: $article['title']) ?>"><?php endif; ?><span class="eyebrow"><?= e(strtoupper($article['category'])) ?></span><h1><?= e($article['title']) ?></h1><p class="muted"><?= e(date('d M Y',strtotime($article['publish_at'] ?: $article['created_at']))) ?></p><?php if($article['excerpt']): ?><p class="article-excerpt"><?= e($article['excerpt']) ?></p><?php endif; ?><div class="article-body"><?= nl2br(e($article['body'])) ?></div><a class="text-link" href="<?= e(app_url('berita')) ?>"><?= e(site_val('article_body_back_label','← Kembali ke berita')) ?></a></article><?php endif; ?>
 
 <?php elseif ($page === 'profil'): ?>
   <section class="page-hero"><span class="eyebrow"><?= e(site_val('profile_eyebrow','Tentang Kami')) ?></span><h1><?= e(site_val('profile_title','Profil Desa')) ?></h1><p><?= e(site_val('profile_intro','Ruang informasi resmi desa. Identitas, sejarah, struktur pemerintahan, potensi, alamat, dan kontak akan dikelola melalui panel admin.')) ?></p></section>
