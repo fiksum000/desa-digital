@@ -21,17 +21,27 @@ function mv_top(string $title, string $description, bool $public = false): void 
     echo '<section class="page-hero"><span class="eyebrow">'.e($public?'Informasi Publik':'Ruang Kerja Terbatas').'</span><h1>'.e($title).'</h1><p>'.e($description).'</p></section>';
 }
 function mv_tools_nav(array $user): void {
-    echo '<nav class="module-toolbar" aria-label="Navigasi panel">';
-    echo '<a href="'.e(app_url('dashboard')).'">Dashboard</a>';
-    echo '<a href="'.e(app_url('notifikasi')).'">Notifikasi</a>';
-    $role=$user['role'] ?? '';
-    if(in_array($role,['rt','admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rt-data')).'">Data Warga</a>';
-    if(in_array($role,['rw','admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rw-rekap')).'">Rekap RW</a>';
-    if(in_array($role,['rt','petugas','admin_desa'],true)) { echo '<a href="'.e(app_url('dokumen')).'">Dokumen Warga</a><a href="'.e(app_url('perubahan')).'">Antrean Verifikasi</a>'; }
-    if($role==='admin_desa') {
-        echo '<a href="'.e(app_url('admin-users')).'">Akun RT/RW</a><a href="'.e(app_url('admin-wilayah')).'">Wilayah</a><a href="'.e(app_url('admin-services')).'">Jenis Layanan</a><a href="'.e(app_url('admin-directory')).'">UMKM/Wisata</a><a href="'.e(app_url('admin-budget')).'">Transparansi</a><a href="'.e(app_url('admin-site')).'">Tampilan Website</a>';
+    $role = (string)($user['role'] ?? '');
+    echo '<nav class="module-toolbar'.($role === 'rt' ? ' module-toolbar-rt' : '').'" aria-label="Navigasi panel">';
+    echo '<a href="'.e(app_url('dashboard')).'">Beranda</a>';
+    if ($role === 'rt') {
+        echo '<a href="'.e(app_url('rt-data')).'">Data Warga</a>';
+        echo '<a href="'.e(app_url('dokumen')).'">Dokumen Warga</a>';
+        echo '<a href="'.e(app_url('perubahan')).'">Verifikasi Data</a>';
+        echo '<a href="'.e(app_url('laporan')).'">Laporan RT</a>';
+        echo '<a href="'.e(app_url('notifikasi')).'">Pengumuman & Notifikasi</a>';
+    } else {
+        echo '<a href="'.e(app_url('notifikasi')).'">Notifikasi</a>';
+        if (in_array($role,['admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rt-data')).'">Data Warga</a>';
+        if (in_array($role,['rw','admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rw-rekap')).'">Rekap RW</a>';
+        if (in_array($role,['rt','petugas','admin_desa'],true)) {
+            echo '<a href="'.e(app_url('dokumen')).'">Dokumen Warga</a><a href="'.e(app_url('perubahan')).'">Antrean Verifikasi</a>';
+        }
+        if ($role==='admin_desa') {
+            echo '<a href="'.e(app_url('admin-users')).'">Akun RT/RW</a><a href="'.e(app_url('admin-wilayah')).'">Wilayah</a><a href="'.e(app_url('admin-services')).'">Jenis Layanan</a><a href="'.e(app_url('admin-directory')).'">UMKM/Wisata</a><a href="'.e(app_url('admin-budget')).'">Transparansi</a><a href="'.e(app_url('admin-site')).'">Tampilan Website</a>';
+        }
+        if (in_array($role,['rt','rw','petugas','admin_desa','kepala_desa'],true)) echo '<a href="'.e(app_url('laporan')).'">Laporan</a>';
     }
-    if(in_array($role,['rt','rw','petugas','admin_desa','kepala_desa'],true)) echo '<a href="'.e(app_url('laporan')).'">Laporan</a>';
     echo '</nav>';
 }
 function mv_guard(string $page, ?array $user, array $allowed): bool {
