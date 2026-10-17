@@ -197,10 +197,12 @@ try {
         ->execute(['CI-SR-TEST-001',$serviceId,$wargaId,'CI pengajuan',json_encode(['details'=>'CI test'],JSON_THROW_ON_ERROR),'submitted']);
     $serviceRequestId = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE service_requests SET letter_number=?,letter_snapshot=?,letter_issued_by=?,letter_issued_at=NOW() WHERE id=?')->execute(['CI/LET/2026/001',json_encode(['village_name'=>'Desa CI','office_address'=>'Alamat CI','village_regency'=>'Kabupaten CI','village_province'=>'Jawa Barat','village_head_name'=>'Kepala Desa CI'],JSON_THROW_ON_ERROR),$adminId,$serviceRequestId]);
-    $letterStmt = $pdo->prepare('SELECT letter_number,letter_issued_by,letter_issued_at FROM service_requests WHERE id=?');
+    $letterStmt = $pdo->prepare('SELECT letter_number,letter_snapshot,letter_issued_by,letter_issued_at FROM service_requests WHERE id=?');
     $letterStmt->execute([$serviceRequestId]);
     $letterRow = $letterStmt->fetch();
     expect_true($letterRow && $letterRow['letter_number']==='CI/LET/2026/001' && (int)$letterRow['letter_issued_by']===$adminId && !empty($letterRow['letter_issued_at']), 'Official letter number and issuer metadata must persist.');
+    $letterSnapshot = json_decode((string)($letterRow['letter_snapshot'] ?? ''), true);
+    expect_true(is_array($letterSnapshot) && ($letterSnapshot['village_name'] ?? '')==='Desa CI', 'PDF must be able to use the immutable village header snapshot from issue time.');
     $serviceFileKey = bin2hex(random_bytes(24)) . '.pdf';
     $pdo->prepare('INSERT INTO service_request_files (request_id,storage_key,original_name,mime_type,size_bytes,uploaded_by) VALUES (?,?,?,?,?,?)')
         ->execute([$serviceRequestId,$serviceFileKey,'ci-private.pdf','application/pdf',1024,$wargaId]);
