@@ -60,6 +60,7 @@ function upload_public_image(string $field): ?string {
 
 require_once __DIR__ . '/app/modules.php';
 module_serve_private_document();
+module_serve_export();
 module_handle_post();
 
 try {
@@ -297,6 +298,15 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
     <a class="<?= in_array($page,['berita','article'],true)?'active':'' ?>" href="<?= e(app_url('berita')) ?>">Berita & Pengumuman</a>
     <a class="<?= $page==='pengaduan'?'active':'' ?>" href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a>
     <a class="<?= $page==='profil'?'active':'' ?>" href="<?= e(app_url('profil')) ?>">Profil Desa</a>
+    <div class="nav-more">
+      <button class="nav-more-button" type="button" aria-expanded="false" aria-controls="nav-more-menu">Lainnya <span aria-hidden="true">⌄</span></button>
+      <div class="nav-more-menu" id="nav-more-menu">
+        <a href="<?= e(app_url('umkm')) ?>">UMKM & Wisata</a>
+        <a href="<?= e(app_url('peta')) ?>">Peta Desa</a>
+        <a href="<?= e(app_url('transparansi')) ?>">Transparansi Anggaran</a>
+        <a href="<?= e(app_url('kontak')) ?>">Kontak</a>
+      </div>
+    </div>
   </nav>
   <div class="header-actions">
     <a class="icon-button search-link" href="<?= e(app_url('berita')) ?>" aria-label="Cari berita">⌕</a>
@@ -432,7 +442,7 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
   <section class="panel"><h2>Pengaduan warga</h2><?php if($adminComplaints): ?><div class="table-wrap"><table><thead><tr><th>Kode</th><th>Pelapor</th><th>Judul</th><th>Status</th><th>Waktu</th></tr></thead><tbody><?php foreach($adminComplaints as $row): ?><tr><td><?= e($row['tracking_code']) ?></td><td><?= e($row['reporter_name']) ?></td><td><?= e($row['title']) ?></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?= e(date('d M Y',strtotime($row['created_at']))) ?></td></tr><?php endforeach; ?></tbody></table></div><?php else: ?><p>Belum ada pengaduan masuk.</p><?php endif; ?></section>
   <?php endif; ?>
 
-<?php elseif (in_array($page, ['rt-data','rw-rekap','dokumen','perubahan','admin-users','admin-wilayah','admin-site','admin-services','laporan','umkm','peta','transparansi','kontak'], true)): ?>
+<?php elseif (in_array($page, ['rt-data','rw-rekap','dokumen','perubahan','admin-users','admin-wilayah','admin-site','admin-services','admin-directory','admin-budget','laporan','umkm','peta','transparansi','kontak'], true)): ?>
   <?php require __DIR__ . '/app/module_views.php'; ?>
 <?php else: ?>
   <section class="page-hero"><span class="eyebrow">DESA DIGITAL</span><h1>Halaman tidak ditemukan</h1><p>Alamat yang kamu buka tidak tersedia.</p><a class="button button-primary" href="<?= e(app_url('home')) ?>">Kembali ke beranda</a></section>
@@ -441,6 +451,9 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
 
 <footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true">◆</span><span><strong>DESA</strong> DIGITAL</span></a><p>Layanan desa, kini lebih dekat.<br>Informasi publik dan pelayanan warga dalam satu tempat.</p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('layanan')) ?>">Layanan Surat</a><a href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a><a href="<?= e(app_url('track')) ?>">Lacak Pengajuan</a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> DESA DIGITAL</span><span>Pelayanan publik yang mudah, cepat, dan transparan.</span></div></footer>
 
+<nav class="mobile-drawer" id="mobile-drawer" hidden aria-label="Menu tambahan">
+  <a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('umkm')) ?>">UMKM & Wisata</a><a href="<?= e(app_url('peta')) ?>">Peta Desa</a><a href="<?= e(app_url('transparansi')) ?>">Transparansi Anggaran</a><a href="<?= e(app_url('kontak')) ?>">Kontak</a>
+</nav>
 <?php if ($viewer): ?><nav class="mobile-bottom-nav" aria-label="Navigasi mobile"><a href="<?= e(app_url('home')) ?>"><span>⌂</span>Beranda</a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span>Layanan</a><a href="<?= e(app_url('berita')) ?>"><span>▦</span>Berita</a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span>Pengaduan</a><a href="<?= e(app_url('dashboard')) ?>"><span>♙</span>Profil</a></nav><?php else: ?><nav class="mobile-bottom-nav" aria-label="Navigasi mobile"><a href="<?= e(app_url('home')) ?>"><span>⌂</span>Beranda</a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span>Layanan</a><a href="<?= e(app_url('berita')) ?>"><span>▦</span>Berita</a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span>Pengaduan</a><a href="<?= e(app_url('login')) ?>"><span>♙</span>Masuk</a></nav><?php endif; ?>
 
 <script src="assets/app.js" defer></script>
