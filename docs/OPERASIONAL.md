@@ -20,17 +20,18 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 5. Jalankan `docker compose up -d --build`.
 6. Periksa `docker compose ps` dan `docker compose logs --tail=100 web db`.
 7. Buat akun admin awal melalui terminal trusted container menggunakan `php bin/create_admin.php <username> \"<Nama Admin>\" '<sandi-panjang>'`. Hindari menuliskan sandi asli di riwayat shell; gunakan mekanisme secret management yang sesuai pada server.
-8. Buka halaman melalui port lokal yang dipilih. Jangan buka port database ke internet.
+8. Untuk dashboard pemilik tingkat tertinggi, jalankan `php bin/migrate_owner_role.php` pada database lama, lalu buat Owner pertama memakai `php bin/create_owner.php <username> <nama-lengkap> <sandi-minimal-20-karakter>`. Jalankan hanya dari terminal tepercaya; jangan memasukkan sandi ke URL, chat, atau log. Schema baru sudah memuat role Owner.
+9. Buka halaman melalui port lokal yang dipilih. Jangan buka port database ke internet.
 
 ## Keamanan sebelum publik
 
 - Pasang HTTPS dan aktifkan cookie sesi Secure.
 - Uji bahwa file di `storage/uploads` tidak bisa dibuka melalui URL publik.
-- Pastikan setiap aksi admin diperiksa di sisi server, tidak hanya dengan menyembunyikan menu.
+- Pastikan setiap aksi admin/Owner diperiksa di sisi server, tidak hanya dengan menyembunyikan menu.
 - Uji akun dari RT berbeda agar tidak dapat mengakses warga, laporan, atau dokumen RT lain.
 - Uji data ganda NIK/KK, revisi surat, persetujuan berjenjang, unggah ulang dokumen, dan pergantian pengurus.
 - Login sekarang membatasi percobaan secara persisten: maksimal 5 kegagalan per akun dan 20 per alamat jaringan dalam jendela 10 menit. Kunci bucket adalah HMAC dari APP_KEY; alamat IP mentah tidak disimpan di tabel pembatasan.
-- Siapkan MFA admin jika tersedia, serta prosedur reset akun.
+- Siapkan MFA admin jika tersedia, serta prosedur reset akun. Kredensial Owner harus unik, terpisah dari akun harian, dan dipakai hanya oleh pemilik sistem.
 - Buat backup terenkripsi database dan file upload di lokasi terpisah. Uji pemulihan, jangan hanya cek file backup ada.
 - Isi profil desa, kontak, jenis surat, syarat resmi, SOP dan pejabat penyetuju bersama pemerintah desa. Statistik kosong sengaja ditampilkan sebagai tanda strip, bukan angka rekaan.
 
