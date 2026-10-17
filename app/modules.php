@@ -347,10 +347,11 @@ function module_handle_post(): void {
                 $parsed=module_read_resident_csv((string)$file['tmp_name']);
                 $rows=$parsed['rows'];$errors=$parsed['errors'];
                 if(count($rows)>1000) throw new RuntimeException('Maksimal 1.000 baris warga per impor. Bagi file menjadi beberapa bagian.');
-                $stmt=$pdo->prepare('SELECT id FROM residents WHERE nik=? LIMIT 1');
+                $stmt=$pdo->prepare('SELECT id FROM residents WHERE nik_hash=? LIMIT 1');
                 $validRows=[];
                 foreach($rows as $row) {
-                    $stmt->execute([$row['nik']]);
+                    $nikHash = private_identifier_hash((string)$row['nik']);
+                    $stmt->execute([$nikHash]);
                     if($stmt->fetchColumn()) $errors[]="Baris {$row['line']}: NIK sudah terdaftar atau diarsipkan. Admin harus memeriksa kemungkinan data ganda/pindah.";
                     else $validRows[]=$row;
                 }
@@ -365,8 +366,9 @@ function module_handle_post(): void {
                             foreach($familyRows as $row) $errors[]="Baris {$row['line']}: alamat dalam satu nomor KK berbeda. Perbaiki file dan impor kembali.";
                             continue;
                         }
-                        $stmt=$pdo->prepare('SELECT id,rt_id,status,address,head_resident_id FROM family_records WHERE family_number=? LIMIT 1');
-                        $stmt->execute([$familyNumber]);$family=$stmt->fetch();
+                        $familyHash = private_identifier_hash((string)$familyNumber);
+                        $stmt=$pdo->prepare('SELECT id,rt_id,status,address,head_resident_id FROM family_records WHERE family_number_hash=? LIMIT 1');
+                        $stmt->execute([$familyHash]);$family=$stmt->fetch();
                         if($family) {
                             if((int)$family['rt_id']!==$rtId || $family['status']==='archived') {
                                 foreach($familyRows as $row) $errors[]="Baris {$row['line']}: nomor KK sudah ada di catatan lain/arsip. Minta Admin Desa memeriksa, jangan membuat KK kedua.";
@@ -378,18 +380,23 @@ function module_handle_post(): void {
                                 continue;
                             }
                         } else {
-                            $stmt=$pdo->prepare("INSERT INTO family_records (family_number,rt_id,address,status,created_by) VALUES (?,?,?,'pending_review',?)");
-                            $stmt->execute([$familyNumber,$rtId,$familyRows[0]['address'],(int)$user['id']]);
+                            $familyCipher = encrypt_private_identifier((string)$familyNumber);
+                            $familyMasked = mask_private_identifier((string)$familyNumber);
+                            $stmt=$pdo->prepare("INSERT INTO family_records (family_number,family_number_cipher,family_number_hash,rt_id,address,status,created_by) VALUES (?,?,?,?,?,'pending_review',?)");
+                            $stmt->execute([$familyMasked,$familyCipher,$familyHash,$rtId,$familyRows[0]['address'],(int)$user['id']]);
                             $familyId=(int)$pdo->lastInsertId();$familiesCreated++;
                         }
                         foreach($familyRows as $row) {
-                            $stmt=$pdo->prepare('SELECT id FROM residents WHERE nik=? LIMIT 1');
-                            $stmt->execute([$row['nik']]);
+                            $nikHash = private_identifier_hash((string)$row['nik']);
+                            $stmt=$pdo->prepare('SELECT id FROM residents WHERE nik_hash=? LIMIT 1');
+                            $stmt->execute([$nikHash]);
                             if($stmt->fetchColumn()) { $errors[]="Baris {$row['line']}: NIK baru saja tercatat oleh proses lain; baris dilewati."; continue; }
                             $relation=$row['relationship_to_head'];
                             if((int)($family['head_resident_id'] ?? 0)>0 && $relation==='') $relation='Anggota keluarga';
-                            $stmt=$pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,full_name,birth_date,gender,phone,relationship_to_head,resident_status,created_by) VALUES (?,?,?,?,?,?,?,?, 'pending_review',?)");
-                            $stmt->execute([$familyId,$rtId,$row['nik'],$row['full_name'],$row['birth_date'],$row['gender'],$row['phone']!==''?$row['phone']:null,$relation!==''?$relation:null,(int)$user['id']]);
+                            $nikCipher = encrypt_private_identifier((string)$row['nik']);
+                            $nikMasked = mask_private_identifier((string)$row['nik']);
+                            $stmt=$pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,nik_cipher,nik_hash,full_name,birth_date,gender,phone,relationship_to_head,resident_status,created_by) VALUES (?,?,?,?,?,?,?,?,?,?, 'pending_review',?)");
+                            $stmt->execute([$familyId,$rtId,$nikMasked,$nikCipher,$nikHash,$row['full_name'],$row['birth_date'],$row['gender'],$row['phone']!==''?$row['phone']:null,$relation!==''?$relation:null,(int)$user['id']]);
                             $residentId=(int)$pdo->lastInsertId();$residentsCreated++;
                             if(!$family || (int)($family['head_resident_id'] ?? 0)===0) {
                                 $pdo->prepare('UPDATE family_records SET head_resident_id=? WHERE id=? AND head_resident_id IS NULL')->execute([$residentId,$familyId]);
