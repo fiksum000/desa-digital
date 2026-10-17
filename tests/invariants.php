@@ -262,6 +262,17 @@ check_true(module_can_access_service_file(['id'=>9,'role'=>'petugas'], ['applica
 check_true(!module_can_access_service_letter(['id'=>43,'role'=>'warga'], ['applicant_id'=>42,'status'=>'approved']), 'A different resident must not access another resident\'s issued letter.');
 check_true(module_can_access_service_letter(['id'=>9,'role'=>'petugas'], ['applicant_id'=>42,'status'=>'approved']), 'Authorized service staff must be able to access issued service letters.');
 
+$moduleViews = load_text('app/module_views.php');
+$modules = load_text('app/modules.php');
+check_true(str_contains($moduleViews, 'Unggah dokumen ke arsip privat'), 'The RT document page must expose the private document upload form.');
+check_true(str_contains($moduleViews, 'name="document_type"') && str_contains($moduleViews, 'value="ktp">KTP') && str_contains($moduleViews, 'value="kk">Kartu Keluarga'), 'The upload form must explicitly offer KTP and KK document types.');
+check_true(str_contains($moduleViews, 'name="document" accept="application/pdf,image/jpeg,image/png,image/webp" required'), 'The upload form must restrict advertised file types and require a file.');
+check_true(str_contains($moduleViews, "if(\$role==='rt') {\$resWhere=' WHERE r.rt_id=?'"), 'The RT upload selector must list residents only from the signed-in RT scope.');
+check_true(str_contains($modules, "case 'module_upload_document':") && str_contains($modules, "module_resident_scope(\$user,(int)\$residentId)"), 'The upload handler must enforce resident territory on the server.');
+check_true(str_contains($modules, "module_upload_private_file(\$_FILES['document'] ?? [])"), 'Resident documents must use private upload validation/storage.');
+check_true(str_contains($modules, "INSERT INTO resident_documents") && str_contains($modules, "'pending'"), 'Uploaded KTP/KK documents must enter the review queue.');
+check_true(str_contains($modules, "module_audit_actor(\$user,'upload','resident_documents'"), 'Resident document uploads must be audit logged.');
+
 if ($failures) {
     fwrite(STDERR, "FAILED: " . count($failures) . " of {$checks} checks\n");
     foreach ($failures as $failure) fwrite(STDERR, " - {$failure}\n");
