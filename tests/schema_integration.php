@@ -64,6 +64,7 @@ try {
     $familyId = (int)$pdo->lastInsertId();
     $pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,nik_cipher,nik_hash,full_name,birth_date,gender,resident_status,created_by) VALUES (?,?,?,?,?,?,?,'L','pending_review',?)")
         ->execute([$familyId,$rtId,$nikMask,$nikCipher,$nikHash,'Penduduk CI','2000-01-01',$rtUserId]);
+    $residentId = (int)$pdo->lastInsertId();
     $storedIdentifiers = $pdo->prepare('SELECT f.family_number,f.family_number_cipher,f.family_number_hash,r.nik,r.nik_cipher,r.nik_hash FROM family_records f JOIN residents r ON r.family_id=f.id WHERE f.id=?');
     $storedIdentifiers->execute([$familyId]);
     $stored = $storedIdentifiers->fetch();
@@ -71,7 +72,6 @@ try {
     expect_true(decrypt_private_identifier($stored['family_number_cipher'])===$rawFamilyNumber, 'Family number ciphertext must decrypt with APP_KEY.');
     expect_true(decrypt_private_identifier($stored['nik_cipher'])===$rawNik, 'NIK ciphertext must decrypt with APP_KEY.');
     expect_true(hash_equals($stored['family_number_hash'],$familyHash) && hash_equals($stored['nik_hash'],$nikHash), 'HMAC indexes must match normalized identifiers.');
-    $residentId = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE family_records SET head_resident_id=? WHERE id=?')->execute([$residentId,$familyId]);
     $stmt=$pdo->prepare('SELECT r.id,f.head_resident_id FROM residents r JOIN family_records f ON f.id=r.family_id WHERE r.id=?');
     $stmt->execute([$residentId]); $familyHead=$stmt->fetch();
