@@ -95,6 +95,7 @@ foreach ([
     'UNIQUE KEY uq_resident_nik_hash',
     'UNIQUE KEY uq_family_number_hash',
     'letter_number VARCHAR(100) NULL',
+    'letter_snapshot JSON NULL',
     'UNIQUE KEY uq_service_letter_number (letter_number)',
     'CONSTRAINT fk_request_letter_issuer',
     'family_number_cipher TEXT NOT NULL',
