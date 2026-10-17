@@ -427,7 +427,7 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
       </div>
     </div>
     <div class="hero-visual">
-      <img src="<?= e(site_val('hero_image','assets/village-hero.svg')) ?>" alt="<?= e(site_val('hero_image_alt','Pemandangan desa dan pegunungan')) ?>">
+      <img src="<?= e(site_val('hero_image','assets/village-hero.svg')) ?>" alt="<?= e(site_val('hero_image_alt','Pemandangan desa dan pegunungan')) ?>" style="object-position:<?= max(0,min(100,(int)site_val('hero_focus_x','50'))) ?>% <?= max(0,min(100,(int)site_val('hero_focus_y','50'))) ?>%">
       <div class="welcome-card"><span class="weather-icon">☀</span><strong><?= e(site_val('welcome_title','Pagi yang baik, Warga Desa!')) ?></strong><p><?= e(site_val('welcome_text','Bersama membangun desa yang lebih maju dan sejahtera.')) ?></p></div>
       <div class="slider-dots"><span>‹</span><i></i><span>›</span></div>
     </div>
