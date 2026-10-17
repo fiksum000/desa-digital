@@ -35,6 +35,12 @@ function safe_slug(string $value): string {
     $value = preg_replace('/[^a-z0-9]+/i', '-', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value);
     return trim(substr((string)$value, 0, 220), '-') ?: 'berita-' . bin2hex(random_bytes(3));
 }
+$siteContent = [];
+function site_val(string $key, string $default = ''): string {
+    global $siteContent;
+    return isset($siteContent[$key]) ? (string)$siteContent[$key] : $default;
+}
+
 function upload_public_image(string $field): ?string {
     if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
     $file = $_FILES[$field];
@@ -52,8 +58,15 @@ function upload_public_image(string $field): ?string {
     return 'assets/uploads/' . $name;
 }
 
+require_once __DIR__ . '/app/modules.php';
+module_serve_private_document();
+module_handle_post();
+
 try {
     $pdo = db();
+    foreach ($pdo->query("SELECT content_key,content_value FROM site_content WHERE status='published'")->fetchAll() as $contentRow) {
+        $siteContent[(string)$contentRow['content_key']] = (string)$contentRow['content_value'];
+    }
     $services = $pdo->query('SELECT id, name, slug, description, requirements, estimated_days FROM service_types WHERE is_published=1 ORDER BY sort_order, name')->fetchAll();
     $news = $pdo->query("SELECT id,title,slug,category,excerpt,body,image_key,alt_text,publish_at,created_at FROM news_posts WHERE status='published' AND (publish_at IS NULL OR publish_at<=NOW()) AND (expire_at IS NULL OR expire_at>NOW()) ORDER BY COALESCE(publish_at,created_at) DESC LIMIT 6")->fetchAll();
     $stats['residents'] = (int)$pdo->query("SELECT COUNT(*) FROM residents WHERE resident_status='active'")->fetchColumn();
@@ -307,8 +320,8 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
   <section class="hero">
     <div class="hero-copy">
       <span class="eyebrow">Pelayanan Publik Desa</span>
-      <h1>Layanan desa,<br>kini <em>lebih dekat</em></h1>
-      <p class="hero-description">Akses berbagai layanan surat, pengaduan, informasi, dan kabar desa dalam satu tempat, dengan mudah, cepat, dan transparan.</p>
+      <h1><?= e(site_val('hero_title_line1','Layanan desa,')) ?><br><?= e(site_val('hero_title_prefix','kini')) ?> <em><?= e(site_val('hero_title_highlight','lebih dekat')) ?></em></h1>
+      <p class="hero-description"><?= e(site_val('hero_subtitle','Akses berbagai layanan surat, pengaduan, informasi, dan kabar desa dalam satu tempat, dengan mudah, cepat, dan transparan.')) ?></p>
       <div class="hero-actions">
         <a class="button button-primary" href="<?= e(app_url('layanan')) ?>"><span class="button-icon">▤</span> Ajukan Surat <span class="arrow">→</span></a>
         <a class="button button-outline" href="<?= e(app_url('track')) ?>"><span class="button-icon">⌕</span> Lacak Pengajuan <span class="arrow">→</span></a>
@@ -321,8 +334,8 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
       </div>
     </div>
     <div class="hero-visual">
-      <img src="assets/village-hero.svg" alt="Ilustrasi lanskap desa, sawah bertingkat, dan pegunungan">
-      <div class="welcome-card"><span class="weather-icon">☀</span><strong>Pagi yang baik,<br>Warga Desa!</strong><p>Bersama membangun desa yang lebih maju dan sejahtera.</p></div>
+      <img src="<?= e(site_val('hero_image','assets/village-hero.svg')) ?>" alt="<?= e(site_val('hero_image_alt','Pemandangan desa dan pegunungan')) ?>">
+      <div class="welcome-card"><span class="weather-icon">☀</span><strong><?= e(site_val('welcome_title','Pagi yang baik, Warga Desa!')) ?></strong><p><?= e(site_val('welcome_text','Bersama membangun desa yang lebih maju dan sejahtera.')) ?></p></div>
       <div class="slider-dots"><span>‹</span><i></i><span>›</span></div>
     </div>
   </section>
@@ -354,7 +367,7 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
   <section class="stats-band" aria-label="Ringkasan data desa">
     <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['residents'] === null ? '—' : number_format($stats['residents'],0,',','.') ?></strong><span>Jumlah Penduduk</span></div></div>
     <div class="stat-item"><span class="stat-icon">⌂</span><div><strong><?= $stats['families'] === null ? '—' : number_format($stats['families'],0,',','.') ?></strong><span>Jumlah KK</span></div></div>
-    <div class="stat-item"><span class="stat-icon">▧</span><div><strong>—</strong><span>Luas Wilayah</span></div></div>
+    <div class="stat-item"><span class="stat-icon">▧</span><div><strong><?= e(site_val('stat_area','—')) ?></strong><span>Luas Wilayah</span></div></div>
     <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['dusun'] === null ? '—' : number_format($stats['dusun'],0,',','.') ?></strong><span>Dusun</span></div></div>
   </section>
 
@@ -394,7 +407,7 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
 
 <?php elseif ($page === 'profil'): ?>
   <section class="page-hero"><span class="eyebrow">Tentang Kami</span><h1>Profil Desa</h1><p>Ruang informasi resmi desa. Identitas, sejarah, struktur pemerintahan, potensi, alamat, dan kontak akan dikelola melalui panel admin.</p></section>
-  <section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2>Profil & sejarah</h2><p>Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.</p></div><div class="panel"><span class="profile-icon">♧</span><h2>Potensi desa</h2><p>UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.</p></div><div class="panel"><span class="profile-icon">✉</span><h2>Kontak kantor</h2><p>Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.</p></div></section>
+  <section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2>Profil & sejarah</h2><p><?= e(site_val('profil_sejarah','Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.')) ?></p></div><div class="panel"><span class="profile-icon">♧</span><h2>Potensi desa</h2><p><?= e(site_val('profil_potensi','UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.')) ?></p></div><div class="panel"><span class="profile-icon">✉</span><h2>Kontak kantor</h2><p>Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.</p></div></section>
 
 <?php elseif ($page === 'login'): ?>
   <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Selamat datang kembali</span><h1>Masuk ke<br><em>DESA DIGITAL</em></h1><p>Akses layanan warga atau panel kerja sesuai peran akun kamu.</p><img src="assets/village-hero.svg" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Masuk</h2><p class="muted">Gunakan username dan kata sandi yang terdaftar.</p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label>Username<input name="username" autocomplete="username" required maxlength="80"></label><label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit">Masuk →</button></form><p class="auth-foot">Belum punya akun warga? <a href="<?= e(app_url('register')) ?>">Daftar di sini</a></p></div></section>
@@ -419,6 +432,8 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
   <section class="panel"><h2>Pengaduan warga</h2><?php if($adminComplaints): ?><div class="table-wrap"><table><thead><tr><th>Kode</th><th>Pelapor</th><th>Judul</th><th>Status</th><th>Waktu</th></tr></thead><tbody><?php foreach($adminComplaints as $row): ?><tr><td><?= e($row['tracking_code']) ?></td><td><?= e($row['reporter_name']) ?></td><td><?= e($row['title']) ?></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?= e(date('d M Y',strtotime($row['created_at']))) ?></td></tr><?php endforeach; ?></tbody></table></div><?php else: ?><p>Belum ada pengaduan masuk.</p><?php endif; ?></section>
   <?php endif; ?>
 
+<?php elseif (in_array($page, ['rt-data','rw-rekap','dokumen','perubahan','admin-users','admin-wilayah','admin-site','admin-services','laporan','umkm','peta','transparansi','kontak'], true)): ?>
+  <?php require __DIR__ . '/app/module_views.php'; ?>
 <?php else: ?>
   <section class="page-hero"><span class="eyebrow">DESA DIGITAL</span><h1>Halaman tidak ditemukan</h1><p>Alamat yang kamu buka tidak tersedia.</p><a class="button button-primary" href="<?= e(app_url('home')) ?>">Kembali ke beranda</a></section>
 <?php endif; ?>
