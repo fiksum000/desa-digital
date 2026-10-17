@@ -5,17 +5,17 @@ $mvPage = (string)($_GET['page'] ?? '');
 $mvUser = current_user();
 $mvAllowedRoles = [
     'rt-data' => ['rt','admin_desa','petugas'],
-    'rw-rekap' => ['rw','admin_desa','petugas'],
-    'dokumen' => ['rt','petugas','admin_desa'],
-    'perubahan' => ['rt','petugas','admin_desa'],
-    'admin-users' => ['admin_desa'],
-    'admin-wilayah' => ['admin_desa'],
-    'admin-site' => ['admin_desa'],
-    'admin-services' => ['admin_desa'],
-    'admin-directory' => ['petugas','admin_desa'],
-    'admin-budget' => ['admin_desa'],
-    'admin-resident-export' => ['admin_desa'],
-    'laporan' => ['rt','rw','petugas','admin_desa','kepala_desa'],
+    'rw-rekap' => ['rw','admin_desa','owner','petugas'],
+    'dokumen' => ['rt','petugas','admin_desa','owner'],
+    'perubahan' => ['rt','petugas','admin_desa','owner'],
+    'admin-users' => ['admin_desa','owner'],
+    'admin-wilayah' => ['admin_desa','owner'],
+    'admin-site' => ['admin_desa','owner'],
+    'admin-services' => ['admin_desa','owner'],
+    'admin-directory' => ['petugas','admin_desa','owner'],
+    'admin-budget' => ['admin_desa','owner'],
+    'admin-resident-export' => ['admin_desa','owner'],
+    'laporan' => ['rt','rw','petugas','admin_desa','owner','kepala_desa'],
     'notifikasi' => ['warga','rt','rw','petugas','admin_desa','kepala_desa'],
 ];
 function mv_top(string $title, string $description, bool $public = false): void {
@@ -33,15 +33,15 @@ function mv_tools_nav(array $user): void {
         echo '<a href="'.e(app_url('notifikasi')).'">Pengumuman & Notifikasi</a>';
     } else {
         echo '<a href="'.e(app_url('notifikasi')).'">Notifikasi</a>';
-        if (in_array($role,['admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rt-data')).'">Data Warga</a>';
-        if (in_array($role,['rw','admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rw-rekap')).'">Rekap RW</a>';
-        if (in_array($role,['rt','petugas','admin_desa'],true)) {
+        if (in_array($role,['admin_desa','owner','petugas'],true)) echo '<a href="'.e(app_url('rt-data')).'">Data Warga</a>';
+        if (in_array($role,['rw','admin_desa','owner','petugas'],true)) echo '<a href="'.e(app_url('rw-rekap')).'">Rekap RW</a>';
+        if (in_array($role,['rt','petugas','admin_desa','owner'],true)) {
             echo '<a href="'.e(app_url('dokumen')).'">Dokumen Warga</a><a href="'.e(app_url('perubahan')).'">Antrean Verifikasi</a>';
         }
-        if ($role==='admin_desa') {
+        if (in_array($role,['admin_desa','owner'],true)) {
             echo '<a href="'.e(app_url('admin-resident-export')).'">Unduh Data Penduduk</a><a href="'.e(app_url('admin-users')).'">Akun RT/RW</a><a href="'.e(app_url('admin-wilayah')).'">Wilayah</a><a href="'.e(app_url('admin-services')).'">Jenis Layanan</a><a href="'.e(app_url('admin-directory')).'">UMKM/Wisata</a><a href="'.e(app_url('admin-budget')).'">Transparansi</a><a href="'.e(app_url('admin-site')).'">Tampilan Website</a>';
         }
-        if (in_array($role,['rt','rw','petugas','admin_desa','kepala_desa'],true)) echo '<a href="'.e(app_url('laporan')).'">Laporan</a>';
+        if (in_array($role,['rt','rw','petugas','admin_desa','owner','kepala_desa'],true)) echo '<a href="'.e(app_url('laporan')).'">Laporan</a>';
     }
     echo '</nav>';
 }
@@ -141,13 +141,13 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
     if($mvPage==='rt-data') {
         mv_top('Data Warga & Keluarga','Tambah data sebagai draf menunggu pemeriksaan, cari catatan yang relevan, dan ajukan perubahan tanpa mengubah data resmi langsung.');
         $role=$mvUser['role'];
-        $options=in_array($role,['admin_desa','petugas'],true)?module_rt_options():[];
-        if(in_array($role,['rt','admin_desa'],true)) {
+        $options=in_array($role,['admin_desa','owner','petugas'],true)?module_rt_options():[];
+        if(in_array($role,['rt','admin_desa','owner'],true)) {
             echo '<section class="panel"><h2>Impor penduduk dari CSV</h2><p>Gunakan template UTF-8. Maksimal 1.000 baris per file. Data hasil impor masuk sebagai menunggu pemeriksaan, bukan langsung menjadi data resmi. NIK/KK ganda atau keluarga di wilayah lain akan ditolak untuk ditinjau admin.</p><p><a class="text-link" href="assets/template-import-warga.csv" download>Unduh template CSV →</a></p><form method="post" enctype="multipart/form-data" class="form-grid">'.csrf_field().'<input type="hidden" name="action" value="module_import_residents">';
-            if($role==='admin_desa') mv_rt_select(module_rt_options());
+            if(in_array($role,['admin_desa','owner'],true)) mv_rt_select(module_rt_options());
             echo '<label class="full-span">Pilih file CSV UTF-8 (maks. 5 MB)<input type="file" name="import_csv" accept=".csv,text/csv,text/plain" required></label><div class="full-span"><button class="button button-primary" type="submit" data-confirm="Impor data sekarang? Data yang masuk akan tetap menunggu pemeriksaan.">Impor CSV →</button></div></form></section>';
             echo '<section class="panel"><h2>Tambah keluarga dan kepala keluarga</h2><p class="muted">NIK/KK adalah data pribadi. Data baru berstatus menunggu pemeriksaan dan tidak tampil di website publik.</p><form method="post" class="form-grid">'.csrf_field().'<input type="hidden" name="action" value="module_save_resident_family">';
-            if($role==='admin_desa') mv_rt_select(module_rt_options());
+            if(in_array($role,['admin_desa','owner'],true)) mv_rt_select(module_rt_options());
             echo '<label>Nomor KK<input name="family_number" inputmode="numeric" maxlength="32" required></label><label>NIK kepala keluarga<input name="nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" required></label><label>Nama lengkap<input name="full_name" maxlength="160" required></label><label>Tanggal lahir<input name="birth_date" type="date"></label><label>Jenis kelamin<select name="gender"><option value="unknown">Belum dipilih</option><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></label><label>Nomor kontak (opsional)<input name="phone" maxlength="30"></label><label class="full-span">Alamat keluarga<textarea name="address" rows="2" maxlength="1000" required></textarea></label><div class="full-span"><button class="button button-primary" type="submit">Simpan sebagai menunggu pemeriksaan →</button></div></form></section>';
         }
         $where='';$params=[];
@@ -198,7 +198,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             echo '<div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Penduduk</th><th>Wilayah</th><th>Status</th><th>Keluarga</th><th>Aksi</th></tr></thead><tbody>';
             foreach($residents as $r) {
                 echo '<tr><td><strong>'.e($r['full_name']).'</strong><small>NIK berakhir '.e($r['nik_last4']).' · '.e($r['gender']).'</small></td><td>'.e(($r['dusun_name']??'Dusun -').' / RW '.($r['rw_code']??'-').' / RT '.($r['rt_code']??'-')).'</td><td><span class="status-pill '.e(status_class($r['resident_status'])).'">'.e(status_text($r['resident_status'])).'</span></td><td>#'.(int)$r['family_id'].'<small>KK '.e(mv_mask_tail($r['family_number'])).'</small></td><td><div class="action-links"><a class="text-link" href="'.e(app_url('dokumen',['resident_id'=>(int)$r['id']])).'">Dokumen</a>';
-                if(in_array($role,['rt','admin_desa'],true) && $r['family_status']!=='archived') {
+                if(in_array($role,['rt','admin_desa','owner'],true) && $r['family_status']!=='archived') {
                     echo '<details class="revise-details"><summary>Tambah anggota keluarga</summary><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="module_add_resident"><input type="hidden" name="family_id" value="'.(int)$r['family_id'].'"><label>NIK anggota (16 digit)<input name="nik" inputmode="numeric" pattern="[0-9]{16}" maxlength="16" required></label><label>Nama lengkap<input name="full_name" maxlength="160" required></label><label>Tanggal lahir<input type="date" name="birth_date"></label><label>Jenis kelamin<select name="gender"><option value="unknown">Belum dipilih</option><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></label><label>Hubungan dalam keluarga<input name="relationship_to_head" maxlength="60" placeholder="Contoh: Anak"></label><button class="button button-small button-primary" type="submit">Tambah sebagai menunggu pemeriksaan</button></form></details>';
                 }
                 if($role==='rt') {
@@ -207,7 +207,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                     foreach($rtOptions as $rt) echo '<option value="'.(int)$rt['id'].'">'.e(($rt['dusun_name']??'Dusun -').' / RW '.$rt['rw_code'].' / RT '.$rt['number_code']).'</option>';
                     echo '</select></label><label>Alasan / dokumen pendukung<textarea name="reason" rows="2" minlength="8" maxlength="1000" required></textarea></label><button class="button button-small button-primary" type="submit">Kirim usulan</button></form></details>';
                 }
-                if(in_array($role,['admin_desa','petugas'],true) && $r['resident_status']==='pending_review') {
+                if(in_array($role,['admin_desa','owner','petugas'],true) && $r['resident_status']==='pending_review') {
                     echo '<form method="post" class="inline-form">'.csrf_field().'<input type="hidden" name="action" value="module_review_resident"><input type="hidden" name="kind" value="resident"><input type="hidden" name="record_id" value="'.(int)$r['id'].'"><button class="button button-small button-primary" name="decision" value="approve" type="submit">Sahkan</button><button class="button button-small button-outline" name="decision" value="archive" type="submit">Arsip</button></form>';
                 }
                 echo '</div></td></tr>';
@@ -242,7 +242,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         if($role==='rt') {$resWhere=' WHERE r.rt_id=?';$resParams[]=(int)$mvUser['rt_id'];}
         $stmt=$dbx->prepare("SELECT r.id,r.full_name,RIGHT(r.nik,4) AS nik_last4,f.id AS family_id FROM residents r JOIN family_records f ON f.id=r.family_id{$resWhere} ORDER BY r.full_name LIMIT 300");
         $stmt->execute($resParams);$residents=$stmt->fetchAll();
-        if(in_array($role,['rt','petugas','admin_desa'],true)) {
+        if(in_array($role,['rt','petugas','admin_desa','owner'],true)) {
             echo '<section class="panel"><h2>Unggah dokumen ke arsip privat</h2><p class="muted">Format: PDF/JPG/PNG/WebP, maksimal 5 MB. Dokumen pribadi tidak boleh dimasukkan ke folder media publik atau GitHub.</p><form method="post" enctype="multipart/form-data" class="form-grid">'.csrf_field().'<input type="hidden" name="action" value="module_upload_document"><label class="full-span">Penduduk<select name="resident_id" required><option value="">Pilih penduduk</option>';
             $selectedId=(int)($_GET['resident_id'] ?? 0);
             foreach($residents as $r) echo '<option value="'.(int)$r['id'].'"'.($selectedId===(int)$r['id']?' selected':'').'>'.e($r['full_name'].' · NIK akhir '.$r['nik_last4'].' · ID KK '.$r['family_id']).'</option>';
@@ -275,7 +275,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         if($docs) { echo '<div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Dokumen</th><th>Pemilik</th><th>Status</th><th>Unggahan</th><th>Aksi</th></tr></thead><tbody>';
             foreach($docs as $d) {
                 echo '<tr><td><strong>'.e(strtoupper($d['document_type'])).'</strong><small>'.e($d['original_name']).' · '.number_format((int)$d['size_bytes']/1024,1,',','.').' KB</small></td><td>'.e($d['full_name']??'Data diarsipkan').'<small>NIK akhir '.e($d['nik_last4']??'----').'</small></td><td><span class="status-pill '.e(status_class($d['status'])).'">'.e(status_text($d['status'])).'</span>'.(!empty($d['review_note'])?'<small>'.e($d['review_note']).'</small>':'').'</td><td>'.e(date('d M Y H:i',strtotime($d['created_at']))).'<small>Oleh '.e($d['uploader']).'</small></td><td><div class="action-links"><a class="text-link" href="'.e(app_url('private-document',['id'=>(int)$d['id']])).'">Unduh privat</a>';
-                if(in_array($role,['petugas','admin_desa'],true) && in_array($d['status'],['pending','revision_requested'],true)) {
+                if(in_array($role,['petugas','admin_desa','owner'],true) && in_array($d['status'],['pending','revision_requested'],true)) {
                     echo '<details class="revise-details"><summary>Periksa</summary><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="module_review_document"><input type="hidden" name="document_id" value="'.(int)$d['id'].'"><label>Keputusan<select name="status"><option value="approved">Terima</option><option value="revision_requested">Minta unggah ulang</option><option value="rejected">Tolak</option><option value="archived">Arsipkan</option></select></label><label>Catatan pemeriksaan<textarea name="review_note" rows="2" placeholder="Wajib jika bukan diterima"></textarea></label><button class="button button-small button-primary" type="submit">Simpan pemeriksaan</button></form></details>';
                 }
                 echo '</div></td></tr>';
@@ -294,7 +294,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
     } elseif($mvPage==='perubahan') {
         mv_top('Antrean Verifikasi','Periksa usulan perubahan data, perpindahan RT, dan data baru sebelum menjadi catatan resmi.');
         $role=$mvUser['role'];
-        if(in_array($role,['petugas','admin_desa'],true)) {
+        if(in_array($role,['petugas','admin_desa','owner'],true)) {
             $stmt=$dbx->query("SELECT r.id,r.full_name,RIGHT(r.nik,4) AS nik_last4,r.resident_status,r.created_at,f.family_number,f.status AS family_status,rt.number_code AS rt_code,rw.number_code AS rw_code,d.name AS dusun_name FROM residents r JOIN family_records f ON f.id=r.family_id JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id WHERE r.resident_status='pending_review' ORDER BY r.created_at ASC LIMIT 100");
             $pending=$stmt->fetchAll();
             echo '<section class="panel"><h2>Data penduduk menunggu pemeriksaan</h2>';
@@ -324,7 +324,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 foreach($data as $k=>$v) if($v!=='' && $v!==null) $summary[]=$k.': '.(string)$v;
                 $isConflict=(string)$r['status']==='conflict';
                 echo '<tr><td><strong>'.e($r['full_name']??'Penduduk diarsipkan').'</strong><small>'.e($r['change_type']).' · RT '.e($r['source_rt']).($r['target_rt']?' → RT '.e($r['target_rt']):'').'</small><small>'.e(date('d M Y H:i',strtotime($r['created_at']))).'</small></td><td>'.e($r['reason']).'<small><strong>Usulan:</strong> '.e(implode(' · ',$summary) ?: 'Tidak ada field tambahan').'</small>';
-                if($isConflict && in_array($role,['petugas','admin_desa'],true)) {
+                if($isConflict && in_array($role,['petugas','admin_desa','owner'],true)) {
                     $currentSummary=[];
                     if(!empty($r['full_name'])) $currentSummary[]='Nama: '.$r['full_name'];
                     if(!empty($r['birth_date'])) $currentSummary[]='Tanggal lahir: '.$r['birth_date'];
@@ -350,9 +350,9 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                     }
                     echo '<label>Alasan revisi<textarea name="reason" rows="3" minlength="8" maxlength="1000" required>'.e($r['reason']).'</textarea></label><button class="button button-small button-primary" type="submit">Kirim revisi pada usulan yang sama</button></form></details>';
                 }
-                if(in_array($role,['petugas','admin_desa'],true) && in_array($r['status'],['submitted','in_review','revision_requested','conflict'],true)) {
+                if(in_array($role,['petugas','admin_desa','owner'],true) && in_array($r['status'],['submitted','in_review','revision_requested','conflict'],true)) {
                     echo '<form method="post" class="status-form">'.csrf_field().'<input type="hidden" name="action" value="module_review_change"><input type="hidden" name="change_id" value="'.(int)$r['id'].'"><select name="decision"><option value="revision_requested">Minta revisi</option>';
-                    if($role==='admin_desa') {
+                    if(in_array($role,['admin_desa','owner'],true)) {
                         if(!$isConflict) echo '<option value="approve">Setujui</option>';
                         echo '<option value="reject">Tolak</option>';
                     }
@@ -539,7 +539,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         foreach($kinds as $kind=>$meta) {
             $can=true;
             if(in_array($kind,['residents','families'],true) && !in_array($mvUser['role'],['rt','rw','petugas','admin_desa'],true)) $can=false;
-            if(in_array($kind,['requests','complaints'],true) && !in_array($mvUser['role'],['petugas','admin_desa','kepala_desa'],true)) $can=false;
+            if(in_array($kind,['requests','complaints'],true) && !in_array($mvUser['role'],['petugas','admin_desa','owner','kepala_desa'],true)) $can=false;
             if(!$can) continue;
             echo '<div class="panel"><h2>'.e($meta['label']).'</h2><p>'.e($meta['desc']).'</p><form method="get" action="index.php" class="form-stack"><input type="hidden" name="page" value="module-export"><input type="hidden" name="kind" value="'.e($kind).'"><label>Dari tanggal<input type="date" name="from"></label><label>Sampai tanggal<input type="date" name="to"></label><label>Status<select name="status"><option value="">Semua status</option>';
             foreach($meta['statuses'] as $statusKey=>$statusLabel) echo '<option value="'.e($statusKey).'">'.e($statusLabel).'</option>';
