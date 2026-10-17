@@ -14,7 +14,7 @@ function load_text(string $relative): string {
     return is_file($path) ? (string)file_get_contents($path) : '';
 }
 foreach ([
-    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css', 'bin/migrate_service_letters.php', 'bin/migrate_owner_role.php', 'bin/create_owner.php',
+    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css', 'bin/migrate_service_letters.php', 'bin/migrate_tracking_codes.php', 'bin/migrate_owner_role.php', 'bin/create_owner.php',
     'tests/dashboard_smoke.php', 'assets/app.js', 'assets/village-hero.svg', 'assets/village-hero.webp', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php', 'bin/backup.sh', 'bin/restore.sh',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
@@ -141,6 +141,14 @@ foreach ([
 ] as $needle) {
     check_true(str_contains($index, $needle), "App source missing expected functionality: {$needle}");
 }
+
+$generatedTrackingCode = tracking_code('SR');
+check_true((bool)preg_match('/^SR-[0-9]{6}-[A-F0-9]{32}$/', $generatedTrackingCode), 'New public tracking codes must contain a 128-bit random suffix.');
+check_true(str_contains(load_text('app/bootstrap.php'), 'bin2hex(random_bytes(16))'), 'Tracking tokens must keep a longer cryptographically random suffix.');
+check_true(substr_count($schema, 'tracking_code VARCHAR(48) NOT NULL UNIQUE') === 2, 'Both public tracking tables must accept the longer token.');
+check_true(str_contains($index, '/^[A-Z0-9-]{5,48}$/') && substr_count($index, 'maxlength="48"') >= 2, 'Tracking lookup and input forms must accept new tokens and legacy shorter codes.');
+$trackingMigration = load_text('bin/migrate_tracking_codes.php');
+check_true(str_contains($trackingMigration, 'VARCHAR(48)') && str_contains($trackingMigration, 'service_requests') && str_contains($trackingMigration, 'complaints'), 'Existing databases must have an idempotent migration for longer tracking tokens.');
 
 $modules = load_text('app/modules.php');
 foreach ([
@@ -305,6 +313,8 @@ check_true(str_contains($publicViews,"'hero_cta_apply'=>'") && str_contains($pub
 check_true(str_contains($publicHandler,"'register_image'") && str_contains($publicHandler,"'news_fallback_image'"), 'CMS handler must allowlist public image values.');
 check_true(str_contains($publicHandler,'module_site_image_value_allowed') && str_contains($publicHandler,'module_site_image_keys'), 'Site image publishing/restoration must validate image keys and paths.');
 check_true(str_contains(load_text('app/bootstrap.php'),"Content-Security-Policy: default-src 'self'") && str_contains(load_text('app/bootstrap.php'),"frame-ancestors 'none'"), 'Public responses must include a restrictive content security policy.');
+check_true(str_contains(load_text('app/bootstrap.php'),"Cache-Control: private, no-store, max-age=0") && str_contains(load_text('app/bootstrap.php'),"Pragma: no-cache"), 'Dynamic website responses must disable browser and shared-proxy caching.');
+check_true(str_contains(load_text('app/bootstrap.php'),"Strict-Transport-Security: max-age=15552000") && str_contains(load_text('app/bootstrap.php'),'$secureCookie'), 'HSTS support must be present and keyed to HTTPS configuration.');
 check_true(str_contains($publicIndex,'function public_image_src') && str_contains($publicIndex,'public_image_src($article'), 'Public article/news image URLs must be restricted to allowed local files.');
 check_true(str_contains($publicViews,"'admin-site' => ['admin_desa','owner']"), 'Public site CMS must be restricted to Admin Desa and Owner.');
 check_true(str_contains($publicIndex,"site_image_val('logo_image'") && str_contains($publicIndex,"site_image_val('login_image'") && str_contains($publicIndex,"site_image_val('register_image'"), 'Brand and auth images must use CMS-managed values.');
