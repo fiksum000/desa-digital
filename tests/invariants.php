@@ -185,7 +185,6 @@ if ($failures) {
     exit(1);
 }
 fwrite(STDOUT, "PASS: {$checks} static project invariants checked. (Not a substitute for integration/security testing.)\n");
-), 'Temporary editor backups must not be exposed over HTTP.');
 $vhost = load_text('docker/apache-vhost.conf');
 check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
 check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
@@ -200,7 +199,6 @@ if ($failures) {
     exit(1);
 }
 fwrite(STDOUT, "PASS: {$checks} static project invariants checked. (Not a substitute for integration/security testing.)\n");
-), 'Temporary editor backups must not be exposed over HTTP.');
 $vhost = load_text('docker/apache-vhost.conf');
 check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
 check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
@@ -215,7 +213,6 @@ if ($failures) {
     exit(1);
 }
 fwrite(STDOUT, "PASS: {$checks} static project invariants checked. (Not a substitute for integration/security testing.)\n");
-), 'Temporary editor backups must not be exposed over HTTP.');
 $vhost = load_text('docker/apache-vhost.conf');
 check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
 check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
