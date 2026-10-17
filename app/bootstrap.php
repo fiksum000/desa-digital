@@ -166,7 +166,7 @@ function user_action_rate_limit_consume(string $action, int $userId, int $limit 
         throw new InvalidArgumentException('Konfigurasi pembatasan tindakan tidak valid.');
     }
     $key = private_identifier_key('user-action-rate-limit');
-    $bucketHash = hash_hmac('sha256', "user-action\\0" . $action . "\\0" . $userId, $key);
+    $bucketHash = hash_hmac('sha256', 'user-action|' . $action . '|' . $userId, $key);
     $pdo = db();
     $now = time();
     $pdo->beginTransaction();
