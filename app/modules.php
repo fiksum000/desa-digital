@@ -841,10 +841,27 @@ function module_handle_post(): void {
                 $note=trim((string)($_POST['review_note'] ?? ''));
                 if (!$id || !in_array($status,['approved','revision_requested','rejected','archived'],true)) throw new RuntimeException('Status dokumen tidak valid.');
                 if ($status!=='approved' && mb_strlen($note)<4) throw new RuntimeException('Tuliskan alasan untuk dokumen yang perlu diperbaiki/ditolak/diarsipkan.');
-                $stmt=$pdo->prepare('SELECT id,rt_id,status,document_type,sha256 FROM resident_documents WHERE id=? LIMIT 1'); $stmt->execute([$id]); $before=$stmt->fetch();
-                if (!$before) throw new RuntimeException('Dokumen tidak ditemukan.');
-                $pdo->prepare('UPDATE resident_documents SET status=?,review_note=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?')->execute([$status,$note!==''?$note:null,(int)$user['id'],$id]);
-                module_audit_actor($user,'review_document','resident_documents',$id,['status'=>$before['status']],['status'=>$status,'note'=>$note]);
+
+                $pdo->beginTransaction();
+                try {
+                    // Lock the row so two reviewers cannot silently overwrite each other's decision.
+                    $stmt=$pdo->prepare('SELECT id,rt_id,status,document_type,sha256 FROM resident_documents WHERE id=? LIMIT 1 FOR UPDATE');
+                    $stmt->execute([$id]);
+                    $before=$stmt->fetch();
+                    if (!$before) throw new RuntimeException('Dokumen tidak ditemukan.');
+                    if (!module_is_allowed_rt($user,(int)$before['rt_id'])) throw new RuntimeException('Dokumen berada di luar wilayah tugas akun ini.');
+                    if (!module_document_status_transition_allowed((string)$before['status'],$status)) {
+                        throw new RuntimeException('Perubahan status dokumen tidak diizinkan dari status saat ini. Muat ulang halaman dan periksa status terbaru.');
+                    }
+                    $update=$pdo->prepare('UPDATE resident_documents SET status=?,review_note=?,reviewed_by=?,reviewed_at=NOW() WHERE id=? AND status=?');
+                    $update->execute([$status,$note!==''?$note:null,(int)$user['id'],$id,(string)$before['status']]);
+                    if ($update->rowCount()!==1) throw new RuntimeException('Status dokumen berubah saat diproses. Muat ulang halaman sebelum mencoba kembali.');
+                    module_audit_actor($user,'review_document','resident_documents',$id,['status'=>$before['status']],['status'=>$status,'note'=>$note]);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
+                }
                 flash('Status dokumen diperbarui.'); redirect_to('dokumen');
             }
             case 'module_publish_site_revision': {
@@ -1208,6 +1225,17 @@ function module_serve_private_document(): void {
         error_log('Private document request failed.');
         http_response_code(500); exit('Dokumen belum dapat diakses.');
     }
+}
+
+function module_document_status_transition_allowed(string $from, string $to): bool {
+    $transitions = [
+        'pending' => ['approved', 'revision_requested', 'rejected', 'archived'],
+        'revision_requested' => ['approved', 'revision_requested', 'rejected', 'archived'],
+        'approved' => ['archived'],
+        'rejected' => ['archived'],
+        'archived' => [],
+    ];
+    return in_array($to, $transitions[$from] ?? [], true);
 }
 
 function module_service_status_transition_allowed(string $from, string $to): bool {
