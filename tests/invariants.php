@@ -62,7 +62,7 @@ foreach ([
 
 $index = load_text('index.php');
 foreach ([
-    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', 'user_notifications WHERE user_id=? ORDER BY'
+    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', 'user_notifications WHERE user_id=? ORDER BY',
     'verify_csrf()', 'revision_requested',
     'SELECT tracking_code', "app_url('layanan',["
 ] as $needle) {
