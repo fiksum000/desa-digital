@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS family_records (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_family_rt_status (rt_id, status),
-  KEY idx_family_number (family_number),
+  UNIQUE KEY uq_family_number (family_number),
   CONSTRAINT fk_family_rt FOREIGN KEY (rt_id) REFERENCES rt_units(id) ON DELETE RESTRICT,
   CONSTRAINT fk_family_creator FOREIGN KEY (created_by) REFERENCES app_users(id) ON DELETE RESTRICT,
   CONSTRAINT fk_family_reviewer FOREIGN KEY (reviewed_by) REFERENCES app_users(id) ON DELETE SET NULL
