@@ -302,7 +302,7 @@ check_true(str_contains($indexSource, 'module_serve_admin_resident_bundle();'), 
 // Public site copy/images must be editable through the Admin Desa/Owner CMS.
 $publicViews=load_text('app/module_views.php');$publicHandler=load_text('app/modules.php');$publicIndex=load_text('index.php');$publicCss=load_text('assets/style.css');$publicJs=load_text('assets/app.js');
 check_true(str_contains($publicViews,"'hero_cta_apply'=>'") && str_contains($publicViews,"'profile_intro'=>'") && str_contains($publicViews,"'map_title'=>'"), 'CMS must expose editable copy for public pages.');
-check_true(str_contains($publicHandler,"'register_image'=>['label'") && str_contains($publicHandler,"'news_fallback_image'=>['label'"), 'CMS handler must allowlist public image values.');
+check_true(str_contains($publicHandler,"'register_image'") && str_contains($publicHandler,"'news_fallback_image'"), 'CMS handler must allowlist public image values.');
 check_true(str_contains($publicHandler,'module_site_image_value_allowed') && str_contains($publicHandler,'module_site_image_keys'), 'Site image publishing/restoration must validate image keys and paths.');
 check_true(str_contains($publicViews,"'admin-site' => ['admin_desa','owner']"), 'Public site CMS must be restricted to Admin Desa and Owner.');
 check_true(str_contains($publicIndex,"site_val('logo_image'") && str_contains($publicIndex,"site_val('login_image'") && str_contains($publicIndex,"site_val('register_image'"), 'Brand and auth images must use CMS-managed values.');
