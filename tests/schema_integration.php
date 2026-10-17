@@ -196,6 +196,11 @@ try {
     $pdo->prepare("INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,?,?)")
         ->execute(['CI-SR-TEST-001',$serviceId,$wargaId,'CI pengajuan',json_encode(['details'=>'CI test'],JSON_THROW_ON_ERROR),'submitted']);
     $serviceRequestId = (int)$pdo->lastInsertId();
+    $pdo->prepare('UPDATE service_requests SET letter_number=?,letter_issued_by=?,letter_issued_at=NOW() WHERE id=?')->execute(['CI/LET/2026/001',$adminId,$serviceRequestId]);
+    $letterStmt = $pdo->prepare('SELECT letter_number,letter_issued_by,letter_issued_at FROM service_requests WHERE id=?');
+    $letterStmt->execute([$serviceRequestId]);
+    $letterRow = $letterStmt->fetch();
+    expect_true($letterRow && $letterRow['letter_number']==='CI/LET/2026/001' && (int)$letterRow['letter_issued_by']===$adminId && !empty($letterRow['letter_issued_at']), 'Official letter number and issuer metadata must persist.');
     $serviceFileKey = bin2hex(random_bytes(24)) . '.pdf';
     $pdo->prepare('INSERT INTO service_request_files (request_id,storage_key,original_name,mime_type,size_bytes,uploaded_by) VALUES (?,?,?,?,?,?)')
         ->execute([$serviceRequestId,$serviceFileKey,'ci-private.pdf','application/pdf',1024,$wargaId]);
