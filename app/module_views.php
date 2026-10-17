@@ -63,7 +63,7 @@ function mv_mask_tail(?string $value, int $digits=4): string {
 function mv_db_or_message(): ?PDO {
     try { return db(); }
     catch(Throwable $e) {
-        error_log('DESA DIGITAL module view data unavailable.');
+        error_log('DESA MAKASARI module view data unavailable.');
         echo '<div class="panel"><h2>Data belum tersedia</h2><p>Database belum siap atau sedang tidak tersedia. Periksa konfigurasi server; detail teknis tidak ditampilkan ke publik.</p></div>';
         return null;
     }
