@@ -400,10 +400,10 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
     } elseif($mvPage==='laporan') {
         mv_top('Laporan & Ekspor','Ekspor hanya sesuai kewenangan dan cakupan wilayah akun. Ekspor dicatat di audit log, dan NIK/KK lengkap tidak disertakan.');
         $kinds=[
-            'residents'=>['label'=>'Data penduduk (ringkas)','desc'=>'Nama, NIK disamarkan, status dan wilayah. Hanya RT/RW/petugas/admin.'],
-            'families'=>['label'=>'Rekap keluarga/KK','desc'=>'ID internal, wilayah, status dan jumlah anggota; nomor KK serta alamat lengkap tidak disertakan.'],
-            'requests'=>['label'=>'Laporan pengajuan surat','desc'=>'Kode, layanan, status, catatan publik dan tanggal; hanya petugas/admin/kepala desa.'],
-            'complaints'=>['label'=>'Laporan pengaduan','desc'=>'Kode, judul, status, tanggapan publik dan tanggal; hanya petugas/admin/kepala desa.'],
+            'residents'=>['label'=>'Data penduduk (ringkas)','desc'=>'Nama, NIK disamarkan, status dan wilayah. Hanya RT/RW/petugas/admin.','statuses'=>['draft'=>'Draf','pending_review'=>'Menunggu pemeriksaan','active'=>'Aktif','moved'=>'Pindah','deceased'=>'Meninggal','archived'=>'Arsip']],
+            'families'=>['label'=>'Rekap keluarga/KK','desc'=>'ID internal, wilayah, status dan jumlah anggota; nomor KK serta alamat lengkap tidak disertakan.','statuses'=>['draft'=>'Draf','pending_review'=>'Menunggu pemeriksaan','active'=>'Aktif','moved'=>'Pindah','archived'=>'Arsip']],
+            'requests'=>['label'=>'Laporan pengajuan surat','desc'=>'Kode, layanan, status, catatan publik dan tanggal; hanya petugas/admin/kepala desa.','statuses'=>['submitted'=>'Diajukan','in_review'=>'Diperiksa','revision_requested'=>'Perlu revisi','approved'=>'Disetujui','rejected'=>'Ditolak','ready'=>'Siap diambil','completed'=>'Selesai','cancelled'=>'Dibatalkan']],
+            'complaints'=>['label'=>'Laporan pengaduan','desc'=>'Kode, judul, status, tanggapan publik dan tanggal; hanya petugas/admin/kepala desa.','statuses'=>['received'=>'Diterima','in_review'=>'Diperiksa','in_progress'=>'Ditindaklanjuti','waiting_reporter'=>'Menunggu warga','resolved'=>'Tuntas','rejected'=>'Ditolak']],
         ];
         echo '<section class="content-layout">';
         foreach($kinds as $kind=>$meta) {
@@ -411,7 +411,9 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             if(in_array($kind,['residents','families'],true) && !in_array($mvUser['role'],['rt','rw','petugas','admin_desa'],true)) $can=false;
             if(in_array($kind,['requests','complaints'],true) && !in_array($mvUser['role'],['petugas','admin_desa','kepala_desa'],true)) $can=false;
             if(!$can) continue;
-            echo '<div class="panel"><h2>'.e($meta['label']).'</h2><p>'.e($meta['desc']).'</p><form method="get" action="index.php" class="form-stack"><input type="hidden" name="page" value="module-export"><input type="hidden" name="kind" value="'.e($kind).'"><label>Alasan kerja untuk audit<input name="reason" maxlength="300" minlength="4" placeholder="Contoh: laporan rapat desa" required></label><button class="button button-primary" type="submit">Unduh CSV →</button></form></div>';
+            echo '<div class="panel"><h2>'.e($meta['label']).'</h2><p>'.e($meta['desc']).'</p><form method="get" action="index.php" class="form-stack"><input type="hidden" name="page" value="module-export"><input type="hidden" name="kind" value="'.e($kind).'"><label>Dari tanggal<input type="date" name="from"></label><label>Sampai tanggal<input type="date" name="to"></label><label>Status<select name="status"><option value="">Semua status</option>';
+            foreach($meta['statuses'] as $statusKey=>$statusLabel) echo '<option value="'.e($statusKey).'">'.e($statusLabel).'</option>';
+            echo '</select></label><label>Alasan kerja untuk audit<input name="reason" maxlength="300" minlength="4" placeholder="Contoh: laporan rapat desa" required></label><button class="button button-primary" type="submit">Unduh CSV →</button></form></div>';
         }
         echo '</section>';
     }
