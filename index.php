@@ -96,8 +96,66 @@ function upload_public_image(string $field): ?string {
     return 'assets/uploads/' . $name;
 }
 
+function normalize_private_uploads(string $field, int $maxFiles = 5): array {
+    if (!isset($_FILES[$field])) return [];
+    $input = $_FILES[$field];
+    if (!is_array($input['name'] ?? null)) {
+        if ((int)($input['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return [];
+        throw new RuntimeException('Format lampiran tidak valid.');
+    }
+    $files = [];
+    foreach ($input['name'] as $index => $name) {
+        $error = (int)($input['error'][$index] ?? UPLOAD_ERR_NO_FILE);
+        if ($error === UPLOAD_ERR_NO_FILE) continue;
+        $files[] = [
+            'name' => (string)$name,
+            'type' => (string)($input['type'][$index] ?? ''),
+            'tmp_name' => (string)($input['tmp_name'][$index] ?? ''),
+            'error' => $error,
+            'size' => (int)($input['size'][$index] ?? 0),
+        ];
+    }
+    if (count($files) > $maxFiles) {
+        throw new RuntimeException('Maksimal ' . $maxFiles . ' lampiran per pengajuan.');
+    }
+    return $files;
+}
+
+function save_service_request_files(PDO $pdo, int $requestId, int $userId, array $uploads): array {
+    $storedKeys = [];
+    try {
+        foreach ($uploads as $upload) {
+            $saved = module_upload_private_file($upload);
+            $storedKeys[] = (string)$saved['key'];
+            $stmt = $pdo->prepare(
+                'INSERT INTO service_request_files
+                (request_id,storage_key,original_name,mime_type,size_bytes,uploaded_by)
+                VALUES (?,?,?,?,?,?)'
+            );
+            $stmt->execute([
+                $requestId, $saved['key'], $saved['name'], $saved['mime'],
+                $saved['size'], $userId
+            ]);
+            $fileId = (int)$pdo->lastInsertId();
+            audit_log($userId, 'upload', 'service_request_files', (string)$fileId, null, [
+                'request_id' => $requestId,
+                'mime_type' => $saved['mime'],
+                'size_bytes' => $saved['size']
+            ]);
+        }
+        return $storedKeys;
+    } catch (Throwable $e) {
+        foreach ($storedKeys as $key) {
+            $path = __DIR__ . '/storage/uploads/' . $key;
+            if (is_file($path)) @unlink($path);
+        }
+        throw $e;
+    }
+}
+
 require_once __DIR__ . '/app/modules.php';
 module_serve_private_document();
+module_serve_private_service_file();
 module_serve_export();
 module_handle_post();
 
