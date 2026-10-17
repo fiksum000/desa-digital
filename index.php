@@ -379,7 +379,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $user = require_roles(['admin_desa','kepala_desa']);
             $id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
             $letterNumber = trim((string)($_POST['letter_number'] ?? ''));
-            if (!$id || !preg_match('/^[\\pL0-9][\\pL0-9 .\\/_-]{2,99}$/u', $letterNumber)) {
+            if (!$id || !preg_match('/^[\pL0-9][\pL0-9 .\/_-]{2,99}$/u', $letterNumber)) {
                 throw new RuntimeException('Nomor surat wajib diisi dengan format yang valid (3–100 karakter).');
             }
 
