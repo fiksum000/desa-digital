@@ -70,6 +70,9 @@ jobs:
           APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner dashboard
           APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-users
           APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-resident-export
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php admin_desa admin-site
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-site
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php warga admin-site
       - name: Public homepage HTTP smoke test
         run: |
           APP_KEY="$(openssl rand -hex 32)" php -S 127.0.0.1:8080 -t . >/tmp/desa-digital-php.log 2>&1 &
