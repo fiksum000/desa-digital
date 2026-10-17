@@ -1574,9 +1574,22 @@ function module_serve_admin_resident_bundle(): void {
     $pdo = db();
     $where = '';
     $params = [];
-    if ($scope === 'dusun') { $where = ' WHERE d.id=?'; $params[] = (int)$scopeId; }
-    elseif ($scope === 'rw') { $where = ' WHERE rw.id=?'; $params[] = (int)$scopeId; }
-    elseif ($scope === 'rt') { $where = ' WHERE rt.id=?'; $params[] = (int)$scopeId; }
+    if ($scope !== 'all') {
+        // Validate the ID against the selected active region table before building the export query.
+        $scopeChecks = [
+            'dusun' => ['SELECT id FROM dusun WHERE id=? AND is_active=1', ' WHERE d.id=?'],
+            'rw' => ['SELECT id FROM rw_units WHERE id=? AND is_active=1', ' WHERE rw.id=?'],
+            'rt' => ['SELECT rt.id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.is_active=1 AND rw.is_active=1', ' WHERE rt.id=?'],
+        ];
+        [$checkSql, $where] = $scopeChecks[$scope];
+        $check = $pdo->prepare($checkSql);
+        $check->execute([(int)$scopeId]);
+        if (!$check->fetchColumn()) {
+            http_response_code(400);
+            exit('ID wilayah tidak cocok dengan filter atau wilayah sudah tidak aktif.');
+        }
+        $params[] = (int)$scopeId;
+    }
 
     try {
         $stmt = $pdo->prepare(
@@ -1629,7 +1642,7 @@ function module_serve_admin_resident_bundle(): void {
             $zipPath = tempnam(sys_get_temp_dir(), 'desa-bundle-');
             if ($zipPath === false) { @unlink($csvPath); throw new RuntimeException('Tidak dapat membuat paket ZIP.'); }
             $zip = new ZipArchive();
-            if ($zip->open($zipPath, ZipArchive::OVERWRITE) !== true) {
+            if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
                 @unlink($csvPath); @unlink($zipPath);
                 throw new RuntimeException('Paket ZIP tidak dapat dibuat.');
             }
