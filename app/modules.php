@@ -110,7 +110,7 @@ function module_create_rt_account(array $user): never {
         module_audit_actor($user,'create','rt_account',$accountId,null,['rt_id'=>$rtId,'rw_id'=>$rwId,'username'=>$username]);
         $pdo->commit();
     } catch (Throwable $e) {
-        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pdo instanceof PDO && $pdo->inTransaction()) $pdo->rollBack();
         throw $e;
     }
     flash("Akun Ketua RT {$rtCode} berhasil dibuat. Minta pengurus mengganti kata sandi setelah masuk.");
@@ -142,6 +142,7 @@ function module_handle_post(): void {
     $action = $_POST['action'] ?? '';
     if (!is_string($action) || !str_starts_with($action, 'module_')) return;
     verify_csrf();
+    $pdo = null;
     try {
         $pdo = db();
         $user = require_login();
@@ -391,8 +392,15 @@ function module_handle_post(): void {
                     'hero_title_prefix'=>['label'=>'Kata sebelum judul sorotan','max'=>50],
                     'hero_title_highlight'=>['label'=>'Judul hero sorotan','max'=>100],
                     'hero_subtitle'=>['label'=>'Deskripsi hero','max'=>500],
+                    'hero_image_alt'=>['label'=>'Teks alternatif foto hero','max'=>255],
                     'welcome_title'=>['label'=>'Judul sambutan','max'=>160],
                     'welcome_text'=>['label'=>'Isi sambutan','max'=>300],
+                    'profil_sejarah'=>['label'=>'Profil dan sejarah desa','max'=>20000],
+                    'profil_potensi'=>['label'=>'Potensi desa','max'=>20000],
+                    'umkm_intro'=>['label'=>'Pengantar UMKM dan wisata','max'=>1000],
+                    'map_public_url'=>['label'=>'Tautan peta HTTPS','max'=>1000],
+                    'transparansi_intro'=>['label'=>'Pengantar transparansi anggaran','max'=>2000],
+                    'contact_intro'=>['label'=>'Petunjuk kontak layanan','max'=>1000],
                     'office_address'=>['label'=>'Alamat kantor desa','max'=>500],
                     'office_phone'=>['label'=>'Nomor kontak kantor','max'=>80],
                     'stat_area'=>['label'=>'Luas wilayah','max'=>60],
@@ -403,6 +411,12 @@ function module_handle_post(): void {
                     $value=trim((string)($_POST['content'][$key] ?? ''));
                     if(mb_strlen($value)>$meta['max']) throw new RuntimeException($meta['label'].' terlalu panjang.');
                     if($value!=='') $values[$key]=$value;
+                }
+                if (isset($values['map_public_url']) && $values['map_public_url'] !== '') {
+                    $mapUrl = $values['map_public_url'];
+                    if (!filter_var($mapUrl, FILTER_VALIDATE_URL) || parse_url($mapUrl, PHP_URL_SCHEME) !== 'https') {
+                        throw new RuntimeException('Tautan peta harus berupa URL HTTPS yang valid.');
+                    }
                 }
                 $image=upload_public_image('hero_image');
                 if($image) $values['hero_image']=$image;
@@ -535,6 +549,8 @@ function module_handle_post(): void {
             'module_upload_document','module_review_document' => 'dokumen',
             'module_save_site' => 'admin-site',
             'module_save_service' => 'admin-services',
+            'module_save_directory' => 'admin-directory',
+            'module_save_budget' => 'admin-budget',
             default => 'dashboard',
         };
         redirect_to($fallback);
