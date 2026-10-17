@@ -628,29 +628,56 @@ function module_handle_post(): void {
                 $id=filter_input(INPUT_POST,'change_id',FILTER_VALIDATE_INT);
                 $reason=trim((string)($_POST['reason'] ?? ''));
                 if(!$id || mb_strlen($reason)<8 || mb_strlen($reason)>1000) throw new RuntimeException('Usulan dan alasan revisi belum valid.');
-                $stmt=$pdo->prepare("SELECT cr.*,r.rt_id AS resident_rt_id FROM resident_change_requests cr LEFT JOIN residents r ON r.id=cr.resident_id WHERE cr.id=? AND cr.status='revision_requested' LIMIT 1");
-                $stmt->execute([$id]); $request=$stmt->fetch();
-                if(!$request || (int)$request['source_rt_id']!==(int)($user['rt_id'] ?? 0) || (int)$request['submitted_by']!==(int)$user['id']) throw new RuntimeException('Usulan revisi tidak ditemukan atau bukan milik wilayah akun ini.');
-                $data=json_decode((string)$request['proposed_data'],true) ?: [];
-                foreach(['full_name','birth_date','gender','phone','address'] as $key) {
-                    if(array_key_exists($key,$_POST)) $data[$key]=trim((string)$_POST[$key]);
-                }
-                $type=(string)$request['change_type'];
-                if($type==='move_rt') {
-                    $target=filter_input(INPUT_POST,'target_rt_id',FILTER_VALIDATE_INT);
-                    if($target) {
-                        if($target===(int)$request['source_rt_id']) throw new RuntimeException('RT tujuan harus berbeda dari RT asal.');
-                        $check=$pdo->prepare('SELECT id FROM rt_units WHERE id=? AND is_active=1');$check->execute([$target]);
-                        if(!$check->fetchColumn()) throw new RuntimeException('RT tujuan tidak tersedia.');
-                        $request['target_rt_id']=$target;
+                $pdo->beginTransaction();
+                try {
+                    $stmt=$pdo->prepare("SELECT cr.*,r.rt_id AS resident_rt_id FROM resident_change_requests cr LEFT JOIN residents r ON r.id=cr.resident_id WHERE cr.id=? AND cr.status='revision_requested' LIMIT 1 FOR UPDATE");
+                    $stmt->execute([$id]); $request=$stmt->fetch();
+                    if(!$request || (int)$request['source_rt_id']!==(int)($user['rt_id'] ?? 0) || (int)$request['submitted_by']!==(int)$user['id']) {
+                        throw new RuntimeException('Usulan revisi tidak ditemukan atau bukan milik wilayah akun ini.');
                     }
-                    if(!(int)$request['target_rt_id']) throw new RuntimeException('Pilih RT tujuan untuk usulan pindah.');
+                    if (str_starts_with((string)($request['review_note'] ?? ''), '[KONFLIK]')
+                        && (string)($_POST['confirm_current_data'] ?? '') !== '1') {
+                        throw new RuntimeException('Usulan mengalami konflik data. Baca data terkini, centang konfirmasi setelah membandingkan, lalu kirim revisi.');
+                    }
+                    $data=json_decode((string)$request['proposed_data'],true) ?: [];
+                    foreach(['full_name','birth_date','gender','phone','address'] as $key) {
+                        if(array_key_exists($key,$_POST)) $data[$key]=trim((string)$_POST[$key]);
+                    }
+                    $type=(string)$request['change_type'];
+                    if($type==='move_rt') {
+                        $target=filter_input(INPUT_POST,'target_rt_id',FILTER_VALIDATE_INT);
+                        if($target) {
+                            if($target===(int)$request['source_rt_id']) throw new RuntimeException('RT tujuan harus berbeda dari RT asal.');
+                            $check=$pdo->prepare('SELECT rt.id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.is_active=1 AND rw.is_active=1');
+                            $check->execute([$target]);
+                            if(!$check->fetchColumn()) throw new RuntimeException('RT/RW tujuan tidak tersedia atau sudah dinonaktifkan.');
+                            $request['target_rt_id']=$target;
+                        }
+                        if(!(int)$request['target_rt_id']) throw new RuntimeException('Pilih RT tujuan untuk usulan pindah.');
+                    }
+                    if(isset($data['gender']) && !in_array($data['gender'],['L','P','unknown'],true)) throw new RuntimeException('Jenis kelamin tidak valid.');
+                    if (!empty($data['birth_date']) && !preg_match('/^\d{4}-\d{2}-\d{2}$/',(string)$data['birth_date'])) throw new RuntimeException('Tanggal lahir tidak valid.');
+                    $snapshot=module_change_snapshot((int)$request['resident_id'],(int)$request['family_id'],$type,true);
+                    if ((int)$snapshot['resident_rt_id'] !== (int)($user['rt_id'] ?? 0)
+                        || (int)$snapshot['family_rt_id'] !== (int)($user['rt_id'] ?? 0)) {
+                        throw new RuntimeException('Wilayah warga/keluarga tidak lagi sesuai akun RT ini. Minta Admin Desa memeriksa usulan; jangan buat catatan baru.');
+                    }
+                    $stmt=$pdo->prepare("UPDATE resident_change_requests SET proposed_data=?,source_snapshot=?,target_rt_id=?,reason=?,status='submitted',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL,updated_at=NOW() WHERE id=? AND status='revision_requested'");
+                    $stmt->execute([
+                        json_encode($data,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),
+                        json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),
+                        $request['target_rt_id'],
+                        $reason,
+                        (int)$id
+                    ]);
+                    if($stmt->rowCount()!==1) throw new RuntimeException('Status usulan berubah saat revisi. Muat ulang halaman sebelum mencoba kembali.');
+                    module_audit_actor($user,'resubmit_change','resident_change_requests',(int)$id,['status'=>'revision_requested'],['status'=>'submitted','snapshot_version'=>1]);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
                 }
-                if(isset($data['gender']) && !in_array($data['gender'],['L','P','unknown'],true)) throw new RuntimeException('Jenis kelamin tidak valid.');
-                $stmt=$pdo->prepare("UPDATE resident_change_requests SET proposed_data=?,target_rt_id=?,reason=?,status='submitted',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL,updated_at=NOW() WHERE id=? AND status='revision_requested'");
-                $stmt->execute([json_encode($data,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$request['target_rt_id'], $reason,(int)$id]);
-                module_audit_actor($user,'resubmit_change','resident_change_requests',(int)$id,['status'=>'revision_requested'],['status'=>'submitted']);
-                flash('Usulan revisi dikirim kembali dengan nomor yang sama.');
+                flash('Usulan revisi dikirim kembali dengan nomor yang sama. Data sumber dicatat ulang untuk pemeriksaan konflik.');
                 redirect_to('perubahan');
             }
             case 'module_review_change': {
