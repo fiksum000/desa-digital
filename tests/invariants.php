@@ -151,6 +151,15 @@ foreach ([
     check_true(str_contains($modules, $needle), "Module source missing expected safety/functionality: {$needle}");
 }
 
+
+$assignedPrivateFile = ['applicant_id'=>7, 'assigned_to'=>42];
+check_true(module_can_access_service_file(['id'=>7, 'role'=>'warga'], $assignedPrivateFile), 'A resident must be able to access their own service attachment.');
+check_true(!module_can_access_service_file(['id'=>8, 'role'=>'warga'], $assignedPrivateFile), 'A resident must not access another resident service attachment.');
+check_true(module_can_access_service_file(['id'=>42, 'role'=>'petugas'], $assignedPrivateFile), 'The assigned officer must be able to access the service attachment.');
+check_true(!module_can_access_service_file(['id'=>43, 'role'=>'petugas'], $assignedPrivateFile), 'An officer must not access an attachment assigned to another officer.');
+check_true(module_can_access_service_file(['id'=>43, 'role'=>'petugas'], ['applicant_id'=>7, 'assigned_to'=>null]), 'Unassigned service attachments must remain available in the staff queue.');
+check_true(module_can_access_service_file(['id'=>99, 'role'=>'admin_desa'], $assignedPrivateFile), 'The village administrator must retain service attachment access.');
+
 $views = load_text('app/module_views.php');
 foreach ([
     'admin-users', 'admin-wilayah', 'admin-site', 'admin-services',
