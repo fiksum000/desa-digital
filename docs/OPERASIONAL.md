@@ -45,7 +45,7 @@ BACKUP_PASSPHRASE_FILE=/root/.config/desa-backup-passphrase \
 ./bin/backup.sh
 ```
 
-Skrip menghasilkan dua arsip GPG AES-256: dump MariaDB serta media/unggahan (`storage/uploads` dan `assets/uploads`), plus checksum SHA-256. Salin hasil `.gpg` beserta checksum ke lokasi terpisah/offsite dan uji pemulihan secara berkala.
+Skrip menghasilkan dua arsip GPG AES-256: dump MariaDB serta media/unggahan (`storage/uploads` dan `assets/uploads`), plus checksum SHA-256. Saat pemulihan, berikan ketiga berkas dari timestamp yang sama; skrip memverifikasi manifest berisi tepat dua nama arsip tersebut dan checksum cocok sebelum meminta konfirmasi atau mengubah data. Salin ketiga berkas ke lokasi terpisah/offsite dan uji pemulihan secara berkala.
 
 Simpan salinan `APP_KEY` yang sama melalui pengelola rahasia terenkripsi dan terpisah. Kunci ini tidak disertakan dalam arsip backup. Jika kunci hilang atau berbeda, NIK/KK terenkripsi tidak bisa dibaca walaupun database pulih.
 
@@ -54,7 +54,8 @@ Pemulihan **mengganti isi tabel database dan folder unggahan**. Pilih pasangan d
 ```bash
 BACKUP_PASSPHRASE_FILE=/root/.config/desa-backup-passphrase \
 ./bin/restore.sh /mnt/backup/desa-digital/desa-digital-db-YYYYMMDDTHHMMSSZ.sql.gz.gpg \
-                  /mnt/backup/desa-digital/desa-digital-files-YYYYMMDDTHHMMSSZ.tar.gz.gpg
+                  /mnt/backup/desa-digital/desa-digital-files-YYYYMMDDTHHMMSSZ.tar.gz.gpg \
+                  /mnt/backup/desa-digital/desa-digital-YYYYMMDDTHHMMSSZ.sha256
 ```
 
 Baca peringatan dan ketik `RESTORE` hanya setelah memastikan pasangan backup benar. Skrip memverifikasi dekripsi/format dan menolak jalur arsip di luar dua direktori upload yang diizinkan, menghentikan web untuk mengurangi penulisan selama pemulihan, lalu menyalakannya kembali. Setelahnya, periksa `docker compose ps`, log aplikasi, akun warga/RT, dokumen privat, dan halaman publik. Ini belum menggantikan latihan pemulihan pada staging.
