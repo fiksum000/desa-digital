@@ -264,12 +264,12 @@ function audit_log(?int $actorId, string $action, string $entityType, ?string $e
 
 function can_manage_content(?array $user = null): bool {
     $role = ($user ?? current_user())['role'] ?? '';
-    return in_array($role, ['petugas', 'admin_desa'], true);
+    return in_array($role, ['petugas', 'admin_desa', 'owner'], true);
 }
 
 function can_process_requests(?array $user = null): bool {
     $role = ($user ?? current_user())['role'] ?? '';
-    return in_array($role, ['petugas', 'admin_desa', 'kepala_desa'], true);
+    return in_array($role, ['petugas', 'admin_desa', 'owner', 'kepala_desa'], true);
 }
 
 function role_label(string $role): string {
@@ -279,6 +279,7 @@ function role_label(string $role): string {
         'rw' => 'Ketua RW',
         'petugas' => 'Petugas Desa',
         'admin_desa' => 'Admin Desa',
+        'owner' => 'Owner',
         'kepala_desa' => 'Kepala Desa',
     ][$role] ?? 'Pengguna';
 }
