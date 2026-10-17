@@ -34,6 +34,34 @@ expect_true(module_csv_safe('Ordinary text') === 'Ordinary text', 'Ordinary CSV 
 $tables = $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()")->fetchAll(PDO::FETCH_COLUMN);
 foreach ($required as $table) expect_true(in_array($table, $tables, true), "Missing table {$table}");
 
+// Commit a minimal territory fixture first because module_is_allowed_rt intentionally
+// checks the database through the application's separate connection.
+$pdo->beginTransaction();
+try {
+    $pdo->prepare('INSERT INTO dusun (name,code) VALUES (?,?)')->execute(['Dusun Scope','CS01']);
+    $scopeDusun = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO rw_units (dusun_id,number_code) VALUES (?,?)')->execute([$scopeDusun,'10']);
+    $scopeRwA = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO rw_units (dusun_id,number_code) VALUES (?,?)')->execute([$scopeDusun,'20']);
+    $scopeRwB = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO rt_units (rw_id,number_code) VALUES (?,?)')->execute([$scopeRwA,'101']);
+    $scopeRtA = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO rt_units (rw_id,number_code) VALUES (?,?)')->execute([$scopeRwB,'201']);
+    $scopeRtB = (int)$pdo->lastInsertId();
+    $pdo->commit();
+} catch (Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    throw $e;
+}
+expect_true(module_is_allowed_rt(['role'=>'rt','rt_id'=>$scopeRtA],$scopeRtA), 'RT must be able to access its own active RT.');
+expect_true(!module_is_allowed_rt(['role'=>'rt','rt_id'=>$scopeRtA],$scopeRtB), 'RT must not access another RT by changing submitted IDs.');
+expect_true(module_is_allowed_rt(['role'=>'rw','rw_id'=>$scopeRwA],$scopeRtA), 'RW must be able to access an RT inside its assigned RW.');
+expect_true(!module_is_allowed_rt(['role'=>'rw','rw_id'=>$scopeRwA],$scopeRtB), 'RW must not access an RT outside its assigned RW.');
+expect_true(module_is_allowed_rt(['role'=>'admin_desa'],$scopeRtB), 'Admin desa may manage an active RT in another RW.');
+expect_true(!module_is_allowed_rt(['role'=>'warga'],$scopeRtA), 'Warga must not use the RT management scope helper.');
+$pdo->prepare('UPDATE rt_units SET is_active=0 WHERE id=?')->execute([$scopeRtB]);
+expect_true(!module_is_allowed_rt(['role'=>'admin_desa'],$scopeRtB), 'Inactive RTs must not be accepted by scoped operations.');
+
 $pdo->beginTransaction();
 try {
     $pdo->prepare("INSERT INTO app_users (username,full_name,password_hash,role) VALUES (?,?,?,'admin_desa')")
