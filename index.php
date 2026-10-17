@@ -41,6 +41,13 @@ function site_val(string $key, string $default = ''): string {
     return isset($siteContent[$key]) ? (string)$siteContent[$key] : $default;
 }
 
+if ($viewer && !empty($viewer['must_change_password'])) {
+    $requestedAction = $_SERVER['REQUEST_METHOD'] === 'POST' ? (string)($_POST['action'] ?? '') : '';
+    if ($page !== 'change-password' && !in_array($requestedAction, ['change_password','logout'], true)) {
+        redirect_to('change-password');
+    }
+}
+
 function upload_public_image(string $field): ?string {
     if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
     $file = $_FILES[$field];
@@ -124,6 +131,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['login_failures'] = 0;
             $pdo->prepare('UPDATE app_users SET last_login_at=NOW() WHERE id=?')->execute([(int)$user['id']]);
             audit_log((int)$user['id'], 'login', 'app_users', (string)$user['id']);
+            redirect_to(!empty($user['must_change_password']) ? 'change-password' : 'dashboard');
+        } elseif ($action === 'change_password') {
+            $user = require_login();
+            $oldPassword = (string)($_POST['old_password'] ?? '');
+            $newPassword = (string)($_POST['new_password'] ?? '');
+            $confirmPassword = (string)($_POST['confirm_password'] ?? '');
+            if (strlen($newPassword) < 14) throw new RuntimeException('Kata sandi baru minimal 14 karakter.');
+            if (!hash_equals($newPassword, $confirmPassword)) throw new RuntimeException('Konfirmasi kata sandi belum sama.');
+            if (hash_equals($oldPassword, $newPassword)) throw new RuntimeException('Gunakan kata sandi baru yang berbeda dari kata sandi lama.');
+            $stmt = $pdo->prepare('SELECT password_hash,session_version,is_active FROM app_users WHERE id=? LIMIT 1');
+            $stmt->execute([(int)$user['id']]);
+            $account = $stmt->fetch();
+            if (!$account || !(int)$account['is_active'] || !password_verify($oldPassword, $account['password_hash'])) {
+                throw new RuntimeException('Kata sandi lama tidak cocok.');
+            }
+            $newVersion = (int)$account['session_version'] + 1;
+            $stmt = $pdo->prepare('UPDATE app_users SET password_hash=?,must_change_password=0,session_version=?,updated_at=NOW() WHERE id=?');
+            $stmt->execute([password_hash($newPassword, PASSWORD_DEFAULT), $newVersion, (int)$user['id']]);
+            $_SESSION['user']['must_change_password'] = 0;
+            $_SESSION['user']['session_version'] = $newVersion;
+            audit_log((int)$user['id'], 'change_password', 'app_users', (string)$user['id'], null, ['session_version'=>$newVersion]);
+            flash('Kata sandi berhasil diganti.');
             redirect_to('dashboard');
         } elseif ($action === 'logout') {
             $user = current_user();
@@ -237,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = $exception->getMessage();
         }
         flash($message, 'error');
-        $fallbackPage = $action === 'login' ? 'login' : ($action === 'register' ? 'register' : ($action === 'save_news' ? 'admin' : ($action === 'submit_complaint' ? 'pengaduan' : ($action === 'apply_service' ? 'layanan' : 'dashboard'))));
+        $fallbackPage = $action === 'login' ? 'login' : ($action === 'register' ? 'register' : ($action === 'change_password' ? 'change-password' : ($action === 'save_news' ? 'admin' : ($action === 'submit_complaint' ? 'pengaduan' : ($action === 'apply_service' ? 'layanan' : 'dashboard')))));
         redirect_to($fallbackPage);
     }
 }
@@ -273,7 +302,7 @@ try {
 }
 
 $flashMessage = take_flash();
-$pageTitles = ['home'=>'Beranda','layanan'=>'Layanan Desa','pengaduan'=>'Pengaduan Warga','track'=>'Lacak Pengajuan','berita'=>'Berita & Pengumuman','article'=>'Berita','profil'=>'Profil Desa','login'=>'Masuk','register'=>'Daftar Akun','dashboard'=>'Dashboard Saya','admin'=>'Panel Pengelolaan'];
+$pageTitles = ['home'=>'Beranda','layanan'=>'Layanan Desa','pengaduan'=>'Pengaduan Warga','track'=>'Lacak Pengajuan','berita'=>'Berita & Pengumuman','article'=>'Berita','profil'=>'Profil Desa','login'=>'Masuk','register'=>'Daftar Akun','dashboard'=>'Dashboard Saya','change-password'=>'Ganti Kata Sandi','admin'=>'Panel Pengelolaan'];
 $title = $pageTitles[$page] ?? 'DESA DIGITAL';
 ?>
 <!doctype html>
@@ -425,6 +454,10 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
 
 <?php elseif ($page === 'register'): ?>
   <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Akun warga</span><h1>Layanan desa,<br><em>lebih dekat.</em></h1><p>Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.</p><img src="assets/village-hero.svg" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Daftar akun warga</h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="register"><label>Nama lengkap<input name="full_name" autocomplete="name" required maxlength="160"></label><label>Username<input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{4,80}" required minlength="4" maxlength="80"></label><label>Email (opsional)<input type="email" name="email" autocomplete="email" maxlength="190"></label><label>Kata sandi<input type="password" name="password" autocomplete="new-password" required minlength="12"><small>Minimal 12 karakter.</small></label><button class="button button-primary button-full" type="submit">Buat akun →</button></form><p class="auth-foot">Sudah punya akun? <a href="<?= e(app_url('login')) ?>">Masuk</a></p></div></section>
+
+<?php elseif ($page === 'change-password'): ?>
+  <?php if (!$viewer): ?><section class="page-hero"><h1>Masuk diperlukan</h1><p>Masuk dulu untuk mengganti kata sandi.</p><a class="button button-primary" href="<?= e(app_url('login')) ?>">Masuk</a></section>
+  <?php else: ?><section class="page-hero"><span class="eyebrow">Keamanan Akun</span><h1>Ganti kata sandi</h1><p>Untuk melindungi akun dan data warga, kata sandi awal atau hasil reset wajib diganti sebelum menggunakan menu lain.</p></section><section class="panel narrow-panel"><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="change_password"><label>Kata sandi lama<input type="password" name="old_password" autocomplete="current-password" required></label><label>Kata sandi baru<input type="password" name="new_password" minlength="14" autocomplete="new-password" required><small>Minimal 14 karakter.</small></label><label>Ulangi kata sandi baru<input type="password" name="confirm_password" minlength="14" autocomplete="new-password" required></label><button class="button button-primary" type="submit">Simpan kata sandi baru →</button></form><form method="post" class="logout-form"><?= csrf_field() ?><input type="hidden" name="action" value="logout"><button class="button button-outline" type="submit">Keluar</button></form></section><?php endif; ?>
 
 <?php elseif ($page === 'dashboard'): ?>
   <?php if (!$viewer): ?><section class="page-hero"><h1>Dashboard Warga</h1><p>Masuk terlebih dahulu untuk melihat data milik akun.</p><a class="button button-primary" href="<?= e(app_url('login')) ?>">Masuk</a></section>
