@@ -397,7 +397,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
     } elseif($mvPage==='admin-site') {
         mv_top('Tampilan Website','Ubah teks hero, sambutan, profil, kontak, foto utama, peta, dan statistik. Simpan sebagai draf untuk pemeriksaan atau terbitkan.');
         $keys=[
-          'village_name'=>'Nama desa','hero_title_line1'=>'Judul hero baris pertama','hero_title_prefix'=>'Kata penghubung hero',
+          'village_name'=>'Nama desa','village_subdistrict'=>'Kecamatan','village_regency'=>'Kabupaten/Kota','village_province'=>'Provinsi','village_head_name'=>'Nama kepala desa/pejabat penandatangan','village_head_title'=>'Jabatan penandatangan','hero_title_line1'=>'Judul hero baris pertama','hero_title_prefix'=>'Kata penghubung hero',
           'hero_title_highlight'=>'Judul hero sorotan','hero_subtitle'=>'Deskripsi hero','hero_focus_x'=>'Fokus foto horizontal (0–100)','hero_focus_y'=>'Fokus foto vertikal (0–100)','welcome_title'=>'Judul sambutan',
           'welcome_text'=>'Isi sambutan singkat','hero_image_alt'=>'Teks alternatif foto hero','profil_sejarah'=>'Profil dan sejarah desa',
           'profil_potensi'=>'Potensi desa','umkm_intro'=>'Pengantar UMKM dan wisata','map_public_url'=>'Tautan peta HTTPS',
