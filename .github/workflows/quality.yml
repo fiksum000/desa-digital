@@ -62,6 +62,12 @@ jobs:
           APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php rt-data
           APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php dokumen
           APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php notifikasi
+      - name: Admin Desa and Owner dashboard render smoke tests
+        run: |
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php admin_desa dashboard
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner dashboard
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-users
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-resident-export
       - name: Public homepage HTTP smoke test
         run: |
           APP_KEY="$(openssl rand -hex 32)" php -S 127.0.0.1:8080 -t . >/tmp/desa-digital-php.log 2>&1 &
