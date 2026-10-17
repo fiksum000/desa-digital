@@ -49,6 +49,7 @@ foreach ([
     'CREATE TABLE IF NOT EXISTS site_content_revisions',
     'CREATE TABLE IF NOT EXISTS public_directory_items',
     'CREATE TABLE IF NOT EXISTS budget_reports',
+    'CREATE TABLE IF NOT EXISTS auth_attempts',
     'UNIQUE KEY uq_resident_nik_hash',
     'UNIQUE KEY uq_family_number_hash',
     'family_number_cipher TEXT NOT NULL',
@@ -97,6 +98,13 @@ check_true(str_contains($modules, 'family_number_hash=?') && str_contains($modul
 check_true(str_contains($modules, 'family_number_cipher') && str_contains($modules, 'nik_cipher'), 'New household/resident records must encrypt raw identifiers at write time.');
 check_true(!str_contains($schema, 'UNIQUE KEY uq_resident_nik (nik)') && !str_contains($schema, 'UNIQUE KEY uq_family_number (family_number)'), 'Masked display columns must not be used as uniqueness indexes.');
 
+$loginSource = load_text('index.php');
+check_true(str_contains($loginSource, 'auth_rate_limit_assert_allowed($username)'), 'Login must enforce persistent rate limits before checking credentials.');
+check_true(str_contains($loginSource, 'auth_rate_limit_record_failure($username)'), 'Login must record failed attempts in the database.');
+check_true(str_contains($loginSource, 'auth_rate_limit_clear_account($username)'), 'Successful login must clear the account failure bucket.');
+$migration = load_text('bin/migrate_private_identifiers.php');
+check_true(str_contains($migration, 'CREATE TABLE IF NOT EXISTS auth_attempts'), 'The upgrade migration must create the persistent rate-limit table.');
+
 $bootstrap = load_text('app/bootstrap.php');
 foreach ([
     'function require_login',
@@ -108,7 +116,10 @@ foreach ([
     'function private_identifier_hash',
     'function encrypt_private_identifier',
     'function decrypt_private_identifier',
-    'function mask_private_identifier'
+    'function mask_private_identifier',
+    'function auth_rate_limit_assert_allowed',
+    'function auth_rate_limit_record_failure',
+    'function auth_rate_limit_clear_account'
 ] as $needle) {
     check_true(str_contains($bootstrap, $needle), "Security bootstrap missing invariant: {$needle}");
 }
