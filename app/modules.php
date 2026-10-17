@@ -900,6 +900,11 @@ function module_handle_post(): void {
                 $user = module_require_role(['admin_desa']);
                 $fields=[
                     'village_name'=>['label'=>'Nama desa','max'=>160],
+                    'village_subdistrict'=>['label'=>'Kecamatan','max'=>120],
+                    'village_regency'=>['label'=>'Kabupaten/Kota','max'=>120],
+                    'village_province'=>['label'=>'Provinsi','max'=>120],
+                    'village_head_name'=>['label'=>'Nama kepala desa/pejabat penandatangan','max'=>160],
+                    'village_head_title'=>['label'=>'Jabatan penandatangan','max'=>120],
                     'hero_title_line1'=>['label'=>'Judul hero baris pertama','max'=>100],
                     'hero_title_prefix'=>['label'=>'Kata sebelum judul sorotan','max'=>50],
                     'hero_title_highlight'=>['label'=>'Judul hero sorotan','max'=>100],
