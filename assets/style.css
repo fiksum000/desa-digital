@@ -64,3 +64,30 @@
   .notification-item { flex-direction:column; gap:12px; padding:14px; }
   .notification-action, .notification-action .button { width:100%; }
 }
+
+
+/* Mobile hero composition aligned to DESA DIGITAL reference */
+@media(max-width:760px){
+  .hero{display:block;position:relative;height:382px;min-height:382px;overflow:hidden;background:#0b3b30;border-radius:0 0 22px 22px}
+  .hero-visual{position:absolute;inset:0;margin:0;height:100%;min-height:0;border-radius:0;z-index:0;background:#164c3b}
+  .hero-visual>img{object-fit:cover;object-position:center;filter:brightness(.68) saturate(1.03)}
+  .hero-visual:after{background:linear-gradient(90deg,rgba(3,34,28,.72) 0%,rgba(3,45,33,.49) 58%,rgba(3,45,33,.22) 100%)}
+  .hero-copy{position:relative;z-index:2;width:100%;max-width:none;padding:32px 18px 16px;color:#fff}
+  .hero-copy .eyebrow{color:#fff;background:rgba(5,57,43,.58);border-color:rgba(231,248,235,.5)}
+  .hero h1{max-width:360px;font-size:34px;line-height:1.04;letter-spacing:-1.2px;margin:12px 0 9px;color:#fff}
+  .hero h1 em{color:#b9f46c}
+  .hero-description{max-width:345px;color:#f4f8f3;font-size:12px;line-height:1.45}
+  .hero-actions{display:grid;grid-template-columns:1fr;gap:8px;margin-top:13px;max-width:330px}
+  .hero-actions .button{width:100%;min-height:42px;justify-content:flex-start;border-radius:13px;padding:0 15px}
+  .hero-actions .button-primary{background:#b9f45c;color:#14291d}
+  .hero-actions .button-outline{background:rgba(4,40,32,.38);border-color:rgba(237,250,241,.8);color:#fff}
+  .hero-actions .arrow{margin-left:auto}
+  .benefits,.welcome-card,.slider-dots{display:none}
+}
+@media(max-width:390px){
+  .hero{height:370px;min-height:370px}
+  .hero-copy{padding:27px 16px 14px}
+  .hero h1{font-size:31px;max-width:310px}
+  .hero-description{font-size:11px;max-width:300px}
+  .hero-actions{margin-top:11px}
+}
