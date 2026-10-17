@@ -51,6 +51,7 @@ foreach ([
     'CREATE TABLE IF NOT EXISTS public_directory_items',
     'CREATE TABLE IF NOT EXISTS budget_reports',
     'CREATE TABLE IF NOT EXISTS auth_attempts',
+    'CREATE TABLE IF NOT EXISTS user_notifications',
     'UNIQUE KEY uq_resident_nik_hash',
     'UNIQUE KEY uq_family_number_hash',
     'family_number_cipher TEXT NOT NULL',
@@ -61,7 +62,7 @@ foreach ([
 
 $index = load_text('index.php');
 foreach ([
-    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman',
+    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', 'user_notifications WHERE user_id=? ORDER BY'
     'verify_csrf()', 'revision_requested',
     'SELECT tracking_code', "app_url('layanan',["
 ] as $needle) {
@@ -73,6 +74,8 @@ foreach ([
     'function module_handle_post',
     'function module_change_snapshot',
     'function module_change_snapshot_matches',
+    "case 'module_mark_notification_read'",
+    'INSERT INTO user_notifications',
     "status='conflict'",
     'function module_serve_private_document',
     'function module_serve_export',
@@ -91,7 +94,7 @@ $views = load_text('app/module_views.php');
 foreach ([
     'admin-users', 'admin-wilayah', 'admin-site', 'admin-services',
     'admin-directory', 'admin-budget', 'rt-data', 'rw-rekap',
-    'private-document', 'module-export'
+    'private-document', 'module-export', 'notifikasi'
 ] as $needle) {
     check_true(str_contains($views, $needle), "Module views missing expected route: {$needle}");
 }
@@ -110,6 +113,7 @@ check_true(str_contains($schema, "'conflict'"), 'Change-request schema must incl
 check_true(str_contains($index, "'conflict'=>'Konflik data'"), 'Conflicted requests must have an explicit user-facing label.');
 $migration = load_text('bin/migrate_private_identifiers.php');
 check_true(str_contains($migration, 'CREATE TABLE IF NOT EXISTS auth_attempts'), 'The upgrade migration must create the persistent rate-limit table.');
+check_true(str_contains($migration, 'CREATE TABLE IF NOT EXISTS user_notifications'), 'The upgrade migration must create the private notification inbox.');
 
 $bootstrap = load_text('app/bootstrap.php');
 foreach ([
