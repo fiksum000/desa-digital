@@ -306,7 +306,7 @@ function module_handle_post(): void {
         $user = require_login();
         switch ($action) {
             case 'module_mark_notification_read': {
-                $user=module_require_role(['warga','rt','rw','petugas','admin_desa','kepala_desa']);
+                $user=module_require_role(['warga','rt','rw','petugas','admin_desa','owner','kepala_desa']);
                 $notificationId=filter_input(INPUT_POST,'notification_id',FILTER_VALIDATE_INT);
                 if(!$notificationId) throw new RuntimeException('Notifikasi tidak valid.');
                 $stmt=$pdo->prepare('UPDATE user_notifications SET read_at=NOW() WHERE id=? AND user_id=? AND read_at IS NULL');
@@ -344,10 +344,11 @@ function module_handle_post(): void {
                 $user = module_require_role(['admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'user_id',FILTER_VALIDATE_INT);
                 $operation=(string)($_POST['operation'] ?? '');
-                $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role IN ('rt','rw','petugas','kepala_desa') LIMIT 1");
+                $managedAccountRoles = ($user['role'] ?? '') === 'owner' ? "'rt','rw','petugas','kepala_desa','admin_desa'" : "'rt','rw','petugas','kepala_desa'";
+                $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role IN ({$managedAccountRoles}) LIMIT 1");
                 $stmt->execute([$id]); $before=$stmt->fetch();
                 if (!$before) throw new RuntimeException('Akun wilayah/petugas tidak ditemukan.');
-                $entityType=match($before['role']) { 'rt'=>'rt_account','rw'=>'rw_account','petugas'=>'petugas_account','kepala_desa'=>'kepala_desa_account', default=>'managed_account' };
+                $entityType=match($before['role']) { 'rt'=>'rt_account','rw'=>'rw_account','petugas'=>'petugas_account','kepala_desa'=>'kepala_desa_account','admin_desa'=>'admin_account', default=>'managed_account' };
                 if ($operation==='deactivate' || $operation==='activate') {
                     $active=$operation==='activate'?1:0;
                     $pdo->prepare('UPDATE app_users SET is_active=?,session_version=session_version+1 WHERE id=?')->execute([$active,$id]);
@@ -367,6 +368,22 @@ function module_handle_post(): void {
                     module_audit_actor($user,'update_identity',$entityType,(int)$id,['username'=>$before['username'],'full_name'=>$before['full_name']],['username'=>$username,'full_name'=>$fullName]);
                     flash('Identitas akun diperbarui.');
                 } else throw new RuntimeException('Tindakan akun tidak dikenali.');
+                redirect_to('admin-users');
+            }
+            case 'module_create_admin_account': {
+                $user = module_require_role(['owner']);
+                $username=strtolower(trim((string)($_POST['username'] ?? '')));
+                $name=trim((string)($_POST['full_name'] ?? ''));
+                $email=trim((string)($_POST['email'] ?? ''));
+                $password=(string)($_POST['password'] ?? '');
+                if(!preg_match('/^[a-z0-9._-]{4,80}$/',$username)) throw new RuntimeException('Username harus 4–80 karakter dan hanya berisi huruf, angka, titik, garis bawah, atau tanda hubung.');
+                if(mb_strlen($name)<3 || mb_strlen($name)>160 || strlen($password)<20) throw new RuntimeException('Nama wajib diisi dan kata sandi awal minimal 20 karakter.');
+                if($email!=='' && !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Format email tidak valid.');
+                $stmt=$pdo->prepare("INSERT INTO app_users (username,email,full_name,password_hash,role,created_by,must_change_password) VALUES (?,?,?,?,'admin_desa',?,1)");
+                $stmt->execute([$username,$email!==''?$email:null,$name,password_hash($password,PASSWORD_DEFAULT),(int)$user['id']]);
+                $id=(int)$pdo->lastInsertId();
+                module_audit_actor($user,'create','admin_account',$id,null,['username'=>$username,'role'=>'admin_desa']);
+                flash('Akun Admin Desa berhasil dibuat. Pengguna wajib mengganti kata sandi pada login pertama.');
                 redirect_to('admin-users');
             }
             case 'module_create_staff_account': {
@@ -1141,7 +1158,7 @@ function module_serve_export(): void {
     $allowedRequest=['submitted','in_review','revision_requested','approved','rejected','ready','completed','cancelled'];
     $allowedComplaint=['received','in_review','in_progress','waiting_reporter','resolved','rejected'];
     if(in_array($kind,['residents','families'],true)) {
-        if(!in_array($role,['rt','rw','petugas','admin_desa'],true)) { http_response_code(403); exit('Akses ekspor tidak diizinkan.'); }
+        if(!in_array($role,['rt','rw','petugas','admin_desa','owner'],true)) { http_response_code(403); exit('Akses ekspor tidak diizinkan.'); }
         $whereParts=[];$params=[];
         if($role==='rt') { $whereParts[]='rt.id=?'; $params[]=(int)$user['rt_id']; }
         elseif($role==='rw') { $whereParts[]='rt.rw_id=?'; $params[]=(int)$user['rw_id']; }
