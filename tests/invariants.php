@@ -42,6 +42,7 @@ foreach ([
     'CREATE TABLE IF NOT EXISTS residents',
     'CREATE TABLE IF NOT EXISTS resident_documents',
     'CREATE TABLE IF NOT EXISTS resident_change_requests',
+    "source_snapshot JSON NULL COMMENT 'Keyed digests of source state; no cleartext PII.'",
     'CREATE TABLE IF NOT EXISTS service_requests',
     'CREATE TABLE IF NOT EXISTS complaints',
     'CREATE TABLE IF NOT EXISTS news_posts',
@@ -70,6 +71,9 @@ foreach ([
 $modules = load_text('app/modules.php');
 foreach ([
     'function module_handle_post',
+    'function module_change_snapshot',
+    'function module_change_snapshot_matches',
+    "status='conflict'",
     'function module_serve_private_document',
     'function module_serve_export',
     'function module_upload_private_file',
@@ -102,6 +106,8 @@ $loginSource = load_text('index.php');
 check_true(str_contains($loginSource, 'auth_rate_limit_assert_allowed($username)'), 'Login must enforce persistent rate limits before checking credentials.');
 check_true(str_contains($loginSource, 'auth_rate_limit_record_failure($username)'), 'Login must record failed attempts in the database.');
 check_true(str_contains($loginSource, 'auth_rate_limit_clear_account($username)'), 'Successful login must clear the account failure bucket.');
+check_true(str_contains($schema, "'conflict'"), 'Change-request schema must include a conflict state.');
+check_true(str_contains($index, "'conflict'=>'Konflik data'"), 'Conflicted requests must have an explicit user-facing label.');
 $migration = load_text('bin/migrate_private_identifiers.php');
 check_true(str_contains($migration, 'CREATE TABLE IF NOT EXISTS auth_attempts'), 'The upgrade migration must create the persistent rate-limit table.');
 
