@@ -68,6 +68,11 @@ check_true(module_service_status_transition_allowed('approved','ready'), 'An app
 check_true(!module_service_status_transition_allowed('approved','completed'), 'An approved request must not skip the ready-for-collection stage.');
 check_true(module_service_status_transition_allowed('ready','completed'), 'A ready request may be completed.');
 check_true(!module_service_status_transition_allowed('completed','in_review'), 'A completed request must remain closed.');
+check_true(module_resident_review_decision_allowed('pending_review','approve'), 'A pending resident may be approved.');
+check_true(module_resident_review_decision_allowed('pending_review','archive'), 'A pending resident may be archived.');
+check_true(!module_resident_review_decision_allowed('active','archive'), 'An already active resident must not be reviewed again as pending.');
+check_true(!module_resident_review_decision_allowed('archived','approve'), 'An archived resident must not be approved from the pending queue.');
+check_true(!module_resident_review_decision_allowed('pending_review','completed'), 'Resident review must reject unrelated decisions.');
 check_true(module_document_status_transition_allowed('pending','approved'), 'A pending resident document may be approved.');
 check_true(module_document_status_transition_allowed('pending','revision_requested'), 'A pending resident document may be returned for revision.');
 check_true(module_document_status_transition_allowed('revision_requested','approved'), 'A corrected resident document may be approved after re-review.');

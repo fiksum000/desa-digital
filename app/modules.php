@@ -575,23 +575,37 @@ function module_handle_post(): void {
                 $id=filter_input(INPUT_POST,'record_id',FILTER_VALIDATE_INT);
                 $decision=(string)($_POST['decision'] ?? '');
                 if (!in_array($kind,['resident','family'],true) || !$id || !in_array($decision,['approve','archive'],true)) throw new RuntimeException('Keputusan pemeriksaan tidak valid.');
-                if ($kind==='resident') {
-                    $stmt=$pdo->prepare("SELECT id,family_id,rt_id,resident_status FROM residents WHERE id=? AND resident_status='pending_review' LIMIT 1"); $stmt->execute([$id]); $row=$stmt->fetch();
-                    if (!$row) throw new RuntimeException('Data penduduk tidak ditemukan atau sudah diperiksa.');
-                    $new=$decision==='approve'?'active':'archived';
-                    $pdo->beginTransaction();
-                    $pdo->prepare('UPDATE residents SET resident_status=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?')->execute([$new,(int)$user['id'],$id]);
-                    if ($decision==='approve') {
-                        $pdo->prepare("UPDATE family_records SET status='active',reviewed_by=?,reviewed_at=NOW() WHERE id=? AND status='pending_review'")->execute([(int)$user['id'],(int)$row['family_id']]);
+
+                $pdo->beginTransaction();
+                try {
+                    if ($kind==='resident') {
+                        $stmt=$pdo->prepare("SELECT id,family_id,rt_id,resident_status FROM residents WHERE id=? AND resident_status='pending_review' LIMIT 1 FOR UPDATE");
+                        $stmt->execute([$id]); $row=$stmt->fetch();
+                        if (!$row) throw new RuntimeException('Data penduduk tidak ditemukan atau sudah diperiksa.');
+                        if (!module_is_allowed_rt($user,(int)$row['rt_id'])) throw new RuntimeException('Data penduduk berada di luar wilayah tugas akun ini.');
+                        $new=$decision==='approve'?'active':'archived';
+                        $update=$pdo->prepare("UPDATE residents SET resident_status=?,reviewed_by=?,reviewed_at=NOW() WHERE id=? AND resident_status='pending_review'");
+                        $update->execute([$new,(int)$user['id'],$id]);
+                        if ($update->rowCount()!==1) throw new RuntimeException('Status penduduk berubah saat diproses. Muat ulang halaman.');
+                        if ($decision==='approve') {
+                            $pdo->prepare("UPDATE family_records SET status='active',reviewed_by=?,reviewed_at=NOW() WHERE id=? AND status='pending_review'")->execute([(int)$user['id'],(int)$row['family_id']]);
+                        }
+                        module_audit_actor($user,$decision,'residents',$id,['status'=>$row['resident_status']],['status'=>$new]);
+                    } else {
+                        $stmt=$pdo->prepare("SELECT id,rt_id,status FROM family_records WHERE id=? AND status='pending_review' LIMIT 1 FOR UPDATE");
+                        $stmt->execute([$id]); $row=$stmt->fetch();
+                        if (!$row) throw new RuntimeException('Data keluarga tidak ditemukan atau sudah diperiksa.');
+                        if (!module_is_allowed_rt($user,(int)$row['rt_id'])) throw new RuntimeException('Data keluarga berada di luar wilayah tugas akun ini.');
+                        $new=$decision==='approve'?'active':'archived';
+                        $update=$pdo->prepare("UPDATE family_records SET status=?,reviewed_by=?,reviewed_at=NOW() WHERE id=? AND status='pending_review'");
+                        $update->execute([$new,(int)$user['id'],$id]);
+                        if ($update->rowCount()!==1) throw new RuntimeException('Status keluarga berubah saat diproses. Muat ulang halaman.');
+                        module_audit_actor($user,$decision,'family_records',$id,['status'=>$row['status']],['status'=>$new]);
                     }
-                    module_audit_actor($user,$decision,'residents',$id,['status'=>$row['resident_status']],['status'=>$new]);
                     $pdo->commit();
-                } else {
-                    $stmt=$pdo->prepare("SELECT id,rt_id,status FROM family_records WHERE id=? AND status='pending_review' LIMIT 1"); $stmt->execute([$id]); $row=$stmt->fetch();
-                    if (!$row) throw new RuntimeException('Data keluarga tidak ditemukan atau sudah diperiksa.');
-                    $new=$decision==='approve'?'active':'archived';
-                    $pdo->prepare('UPDATE family_records SET status=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?')->execute([$new,(int)$user['id'],$id]);
-                    module_audit_actor($user,$decision,'family_records',$id,['status'=>$row['status']],['status'=>$new]);
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
                 }
                 flash($decision==='approve'?'Data disahkan.':'Data diarsipkan dari antrean.');
                 redirect_to('perubahan');
@@ -1225,6 +1239,10 @@ function module_serve_private_document(): void {
         error_log('Private document request failed.');
         http_response_code(500); exit('Dokumen belum dapat diakses.');
     }
+}
+
+function module_resident_review_decision_allowed(string $status, string $decision): bool {
+    return $status === 'pending_review' && in_array($decision, ['approve', 'archive'], true);
 }
 
 function module_document_status_transition_allowed(string $from, string $to): bool {
