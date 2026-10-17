@@ -1453,13 +1453,15 @@ function module_serve_service_letter_pdf(): void {
             http_response_code(404);
             exit('Surat belum disetujui atau nomor surat belum diterbitkan.');
         }
-        $stmt = db()->query("SELECT content_key,content_value FROM site_content WHERE status='published'");
-        $site = [];
-        foreach ($stmt->fetchAll() as $item) $site[(string)$item['content_key']] = (string)$item['content_value'];
+        $site = json_decode((string)($request['letter_snapshot'] ?? ''), true);
+        if (!is_array($site)) {
+            http_response_code(409);
+            exit('Snapshot kop surat tidak tersedia. Hubungi admin desa untuk pemeriksaan.');
+        }
         foreach (['village_name','office_address','village_regency','village_province','village_head_name'] as $required) {
             if (trim((string)($site[$required] ?? '')) === '') {
                 http_response_code(409);
-                exit('Lengkapi nama desa, alamat kantor, kabupaten/kota, provinsi, dan nama kepala desa pada menu Admin Desa - Tampilan Website.');
+                exit('Snapshot kop surat belum lengkap. Hubungi admin desa untuk pemeriksaan.');
             }
         }
         $pdf = module_build_service_letter_pdf($request, $site);
