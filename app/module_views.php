@@ -322,15 +322,23 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         echo '<label class="full-span">Unggah foto hero (JPG/PNG/WebP, maks. 5 MB)<input type="file" name="hero_image" accept="image/jpeg,image/png,image/webp" id="hero-image-input"></label>';
         echo '<div class="full-span preview-columns"><div class="preview-desktop"><div class="preview-label">Pratinjau desktop</div><div class="preview-mini"><strong data-preview-target="hero_title_line1">'.e(site_val('hero_title_line1','Layanan desa,')).'</strong><br><span data-preview-target="hero_title_highlight">'.e(site_val('hero_title_highlight','lebih dekat')).'</span><p data-preview-target="hero_subtitle">'.e(site_val('hero_subtitle','Akses berbagai layanan desa dalam satu tempat.')).'</p></div></div><div class="preview-mobile"><div class="preview-label">Pratinjau HP</div><div class="preview-mini"><strong data-preview-target="hero_title_line1">'.e(site_val('hero_title_line1','Layanan desa,')).'</strong><br><span data-preview-target="hero_title_highlight">'.e(site_val('hero_title_highlight','lebih dekat')).'</span><p data-preview-target="hero_subtitle">'.e(site_val('hero_subtitle','Akses berbagai layanan desa dalam satu tempat.')).'</p></div></div></div>';
         echo '<div class="full-span button-row"><button class="button button-outline" type="submit" name="operation" value="draft">Simpan sebagai draf</button><button class="button button-primary" type="submit" name="operation" value="publish" data-confirm="Terbitkan perubahan konten ke website publik?">Terbitkan ke website →</button></div></form></section>';
-        $drafts=$dbx->query("SELECT content_key,MAX(created_at) AS updated_at FROM site_content_revisions WHERE status='draft' GROUP BY content_key ORDER BY updated_at DESC")->fetchAll();
-        echo '<section class="panel"><h2>Draf menunggu diterbitkan</h2>';
-        if($drafts) { echo '<div class="list-cards">'; foreach($drafts as $d) echo '<div class="list-card"><span class="service-icon">✎</span><div><h3>'.e($d['content_key']).'</h3><p>Diperbarui '.e(date('d M Y H:i',strtotime($d['updated_at']))).'</p></div><span class="status-pill warn">Draf</span></div>'; echo '</div>'; }
-        else echo '<p>Tidak ada draf konten yang belum diterbitkan.</p>';
+        $drafts=$dbx->query("SELECT id,content_key,content_value,created_at FROM site_content_revisions WHERE status='draft' ORDER BY created_at DESC LIMIT 50")->fetchAll();
+        echo '<section class="panel"><h2>Draf menunggu diterbitkan</h2><p>Periksa isi sebelum menerbitkan. Hanya teks yang diterbitkan akan tampil pada website publik.</p>';
+        if($drafts) {
+            echo '<div class="list-cards">';
+            foreach($drafts as $d) {
+                echo '<article class="list-card"><span class="service-icon">✎</span><div><h3>'.e($d['content_key']).'</h3><p>'.e(mb_strimwidth($d['content_value'],0,220,'…')).'</p><small>Diperbarui '.e(date('d M Y H:i',strtotime($d['created_at']))).'</small></div><span class="status-pill warn">Draf</span><form method="post" class="inline-form">'.csrf_field().'<input type="hidden" name="action" value="module_publish_site_revision"><input type="hidden" name="revision_id" value="'.(int)$d['id'].'"><button class="button button-small button-primary" type="submit" data-confirm="Terbitkan draf '.e($d['content_key']).'?">Terbitkan</button></form></article>';
+            }
+            echo '</div>';
+        } else echo '<p>Tidak ada draf konten yang belum diterbitkan.</p>';
         echo '</section>';
-        echo '<section class="panel"><h2>Perubahan terakhir</h2>';
-        $history=$dbx->query('SELECT v.content_value,v.created_at,u.full_name FROM site_content_versions v JOIN app_users u ON u.id=v.editor_id ORDER BY v.created_at DESC LIMIT 15')->fetchAll();
-        if($history) { echo '<div class="table-wrap"><table><thead><tr><th>Editor</th><th>Waktu</th><th>Versi sebelumnya</th></tr></thead><tbody>'; foreach($history as $h) echo '<tr><td>'.e($h['full_name']).'</td><td>'.e(date('d M Y H:i',strtotime($h['created_at']))).'</td><td>'.e(mb_strimwidth($h['content_value'],0,180,'…')).'</td></tr>'; echo '</tbody></table></div>'; }
-        else echo '<p>Riwayat versi akan muncul setelah ada konten yang diganti.</p>';
+        echo '<section class="panel"><h2>Riwayat versi</h2><p>Versi sebelumnya dapat dipulihkan. Pemulihan akan membuat catatan audit dan menyimpan versi saat ini sebelum diganti.</p>';
+        $history=$dbx->query('SELECT v.id,v.content_id,sc.content_key,v.content_value,v.created_at,u.full_name FROM site_content_versions v JOIN site_content sc ON sc.id=v.content_id JOIN app_users u ON u.id=v.editor_id ORDER BY v.created_at DESC LIMIT 30')->fetchAll();
+        if($history) {
+            echo '<div class="table-wrap"><table><thead><tr><th>Editor</th><th>Konten</th><th>Waktu</th><th>Versi sebelumnya</th><th>Aksi</th></tr></thead><tbody>';
+            foreach($history as $h) echo '<tr><td>'.e($h['full_name']).'</td><td>'.e($h['content_key']).'</td><td>'.e(date('d M Y H:i',strtotime($h['created_at']))).'</td><td>'.e(mb_strimwidth($h['content_value'],0,150,'…')).'</td><td><form method="post">'.csrf_field().'<input type="hidden" name="action" value="module_restore_site_version"><input type="hidden" name="version_id" value="'.(int)$h['id'].'"><button class="button button-small button-outline" type="submit" data-confirm="Pulihkan dan terbitkan versi lama untuk '.e($h['content_key']).'?">Pulihkan</button></form></td></tr>';
+            echo '</tbody></table></div>';
+        } else echo '<p>Riwayat versi akan muncul setelah ada konten yang diganti atau dipulihkan.</p>';
         echo '</section>';
     } elseif($mvPage==='admin-services') {
         mv_top('Jenis Layanan Surat','Tambah atau perbarui layanan, syarat, estimasi pengerjaan, dan status publikasi.');
