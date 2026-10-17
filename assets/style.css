@@ -44,3 +44,9 @@
  .button-row .button{flex:1}
  .action-links{min-width:100px}
 }
+
+
+/* Hero media preview used by the CMS editor */
+.preview-hero-img{display:block;width:100%;height:76px;object-fit:cover;object-position:50% 50%;border-radius:8px;margin:0 0 11px;background:#dfece0}
+.preview-mobile .preview-hero-img{height:96px;border-radius:10px}
+@media(max-width:760px){.preview-hero-img{height:86px}.preview-mobile .preview-hero-img{height:110px}}
