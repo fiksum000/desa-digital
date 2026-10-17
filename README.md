@@ -25,11 +25,11 @@ Halaman publik harus tetap dekat dengan gambar acuan: navbar putih, hero hijau-k
 
 Target deployment: Debian/Ubuntu pada VPS atau CT Proxmox, PHP 8.3, MariaDB, dan Apache/PHP. Simpan konfigurasi sensitif pada .env; jangan pernah commit file .env atau dokumen warga.
 
-Panduan operasional akan ditempatkan di docs/OPERASIONAL.md. Skema database ada di schema.sql.
+Panduan operasional akan ditempatkan di docs/OPERASIONAL.md. Skema database ada di schema.sql. Untuk database beta yang dibuat dengan skema identifier lama, lihat `bin/migrate_private_identifiers.php` dan `docs/OPERASIONAL.md` sebelum melanjutkan deployment.
 
 ## Keamanan data
 
-NIK, nomor KK, alamat lengkap personal, nomor telepon, lampiran KTP/KK, pengajuan pribadi, serta catatan internal tidak boleh tampil di halaman publik. Upload harus disimpan di lokasi privat, diakses melalui pemeriksaan autentikasi dan otorisasi di server, dan dicatat dalam audit log.
+NIK dan nomor KK disimpan dalam bentuk terenkripsi menggunakan libsodium; kolom pencarian hanya menyimpan topeng empat digit terakhir dan HMAC berkunci untuk mencegah duplikasi tanpa menyimpan nilai mentah sebagai indeks. Alamat lengkap personal, nomor telepon, lampiran KTP/KK, pengajuan pribadi, serta catatan internal tidak boleh tampil di halaman publik. Upload harus disimpan di lokasi privat, diakses melalui pemeriksaan autentikasi dan otorisasi di server, dan dicatat dalam audit log. Simpan APP_KEY dengan aman bersama strategi backup terenkripsi; kehilangan kunci berarti NIK/KK tidak dapat dibuka.
 
 ## Pengembangan
 
