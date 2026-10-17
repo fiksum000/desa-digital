@@ -55,6 +55,7 @@ jobs:
         run: |
           APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php rt-data
           APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php dokumen
+          APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php notifikasi
       - name: Public homepage HTTP smoke test
         run: |
           APP_KEY="$(openssl rand -hex 32)" php -S 127.0.0.1:8080 -t . >/tmp/desa-digital-php.log 2>&1 &
