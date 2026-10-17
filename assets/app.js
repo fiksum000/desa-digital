@@ -93,19 +93,19 @@ document.addEventListener('DOMContentLoaded', () => {
   focusInputs.forEach((input) => input.addEventListener('input', updateHeroFocus));
   updateHeroFocus();
 
-  const heroImageInput = document.getElementById('hero-image-input');
-  let heroPreviewUrl = null;
-  if (heroImageInput) {
-    heroImageInput.addEventListener('change', () => {
-      const file = heroImageInput.files && heroImageInput.files[0];
-      if (!file) return;
-      if (heroPreviewUrl) URL.revokeObjectURL(heroPreviewUrl);
-      heroPreviewUrl = URL.createObjectURL(file);
-      document.querySelectorAll('[data-preview-hero-image]').forEach((img) => {
-        img.src = heroPreviewUrl;
-      });
+  // Preview each replacement image before it is uploaded.
+  const imagePreviewUrls=new Map();
+  document.querySelectorAll('[data-preview-image-key]').forEach((input)=>{
+    input.addEventListener('change',()=>{
+      const file=input.files&&input.files[0],key=input.getAttribute('data-preview-image-key');
+      if(!file||!key||!file.type.startsWith('image/'))return;
+      const oldUrl=imagePreviewUrls.get(key);if(oldUrl)URL.revokeObjectURL(oldUrl);
+      const url=URL.createObjectURL(file);imagePreviewUrls.set(key,url);
+      document.querySelectorAll('[data-preview-site-image="'+key+'"]').forEach((img)=>{img.src=url;img.hidden=false;});
+      if(key==='hero_image')document.querySelectorAll('[data-preview-hero-image]').forEach((img)=>{img.src=url;});
     });
-  }
+  });
+  document.querySelectorAll('[data-preview-site-image]').forEach((img)=>img.addEventListener('error',()=>{img.hidden=true;}));
 
   // Preview text uses textContent to avoid injecting HTML.
   document.querySelectorAll('[data-preview-key]').forEach((input) => {
