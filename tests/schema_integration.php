@@ -79,8 +79,8 @@ try {
 
     $serviceId = (int)$pdo->query('SELECT id FROM service_types ORDER BY id LIMIT 1')->fetchColumn();
     expect_true($serviceId > 0, 'Default public service types must be seeded');
-    $pdo->prepare("INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,'{"details":"CI test"}','submitted')")
-        ->execute(['CI-SR-TEST-001',$serviceId,$wargaId,'CI pengajuan']);
+    $pdo->prepare("INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,?,?)")
+        ->execute(['CI-SR-TEST-001',$serviceId,$wargaId,'CI pengajuan',json_encode(['details'=>'CI test'],JSON_THROW_ON_ERROR),'submitted']);
     $pdo->prepare("INSERT INTO complaints (tracking_code,reporter_id,title,category,description,status) VALUES (?,?,?,'umum',?,'received')")
         ->execute(['CI-PG-TEST-001',$wargaId,'CI pengaduan','Contoh data otomatis untuk tes skema.']);
     $pdo->prepare("INSERT INTO site_content (content_key,content_value,value_type,status,updated_by) VALUES ('ci_test','ok','text','published',?)")
