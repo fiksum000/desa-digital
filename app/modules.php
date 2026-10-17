@@ -706,6 +706,8 @@ function module_handle_post(): void {
                     'hero_title_prefix'=>['label'=>'Kata sebelum judul sorotan','max'=>50],
                     'hero_title_highlight'=>['label'=>'Judul hero sorotan','max'=>100],
                     'hero_subtitle'=>['label'=>'Deskripsi hero','max'=>500],
+                    'hero_focus_x'=>['label'=>'Fokus foto horizontal (0–100)','max'=>3],
+                    'hero_focus_y'=>['label'=>'Fokus foto vertikal (0–100)','max'=>3],
                     'hero_image_alt'=>['label'=>'Teks alternatif foto hero','max'=>255],
                     'welcome_title'=>['label'=>'Judul sambutan','max'=>160],
                     'welcome_text'=>['label'=>'Isi sambutan','max'=>300],
@@ -725,6 +727,9 @@ function module_handle_post(): void {
                     if (!array_key_exists($key, $_POST['content'] ?? [])) continue;
                     $value=trim((string)($_POST['content'][$key] ?? ''));
                     if(mb_strlen($value)>$meta['max']) throw new RuntimeException($meta['label'].' terlalu panjang.');
+                    if (in_array($key,['hero_focus_x','hero_focus_y'],true) && (!ctype_digit($value) || (int)$value<0 || (int)$value>100)) {
+                        throw new RuntimeException($meta['label'].' harus berupa angka 0 sampai 100.');
+                    }
                     $values[$key]=$value;
                 }
                 if (isset($values['map_public_url']) && $values['map_public_url'] !== '') {
