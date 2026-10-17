@@ -15,6 +15,7 @@ $mvAllowedRoles = [
     'admin-directory' => ['petugas','admin_desa','owner'],
     'admin-budget' => ['admin_desa','owner'],
     'admin-resident-export' => ['admin_desa','owner'],
+    'admin-audit' => ['admin_desa','owner'],
     'laporan' => ['rt','rw','petugas','admin_desa','owner','kepala_desa'],
     'notifikasi' => ['warga','rt','rw','petugas','admin_desa','owner','kepala_desa'],
 ];
@@ -39,7 +40,7 @@ function mv_tools_nav(array $user): void {
             echo '<a href="'.e(app_url('dokumen')).'">Dokumen Warga</a><a href="'.e(app_url('perubahan')).'">Antrean Verifikasi</a>';
         }
         if (in_array($role,['admin_desa','owner'],true)) {
-            echo '<a href="'.e(app_url('admin-resident-export')).'">Unduh Data Penduduk</a><a href="'.e(app_url('admin-users')).'">Akun RT/RW</a><a href="'.e(app_url('admin-wilayah')).'">Wilayah</a><a href="'.e(app_url('admin-services')).'">Jenis Layanan</a><a href="'.e(app_url('admin-directory')).'">UMKM/Wisata</a><a href="'.e(app_url('admin-budget')).'">Transparansi</a><a href="'.e(app_url('admin-site')).'">Tampilan Website</a>';
+            echo '<a href="'.e(app_url('admin-resident-export')).'">Unduh Data Penduduk</a><a href="'.e(app_url('admin-users')).'">Akun RT/RW</a><a href="'.e(app_url('admin-wilayah')).'">Wilayah</a><a href="'.e(app_url('admin-services')).'">Jenis Layanan</a><a href="'.e(app_url('admin-directory')).'">UMKM/Wisata</a><a href="'.e(app_url('admin-budget')).'">Transparansi</a><a href="'.e(app_url('admin-site')).'">Tampilan Website</a><a href="'.e(app_url('admin-audit')).'">Log Aktivitas</a>';
         }
         if (in_array($role,['rt','rw','petugas','admin_desa','owner','kepala_desa'],true)) echo '<a href="'.e(app_url('laporan')).'">Laporan</a>';
     }
@@ -748,6 +749,47 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             echo '</div>';
             echo '<p class="muted">Maksimal 100 notifikasi terbaru ditampilkan. Isi notifikasi dibatasi pada akun penerima dan tidak membuka lampiran privat secara langsung.</p>';
         } else echo '<div class="empty-news"><div><strong>Belum ada notifikasi.</strong><p>Pemberitahuan akan muncul di sini saat ada pembaruan yang terkait dengan akunmu.</p></div></div>';
+        echo '</section>';
+    } elseif($mvPage==='admin-audit') {
+        mv_top('Log Aktivitas','Riwayat tindakan penting pada akun, data, dokumen, layanan, publikasi, dan ekspor. Demi privasi, payload perubahan dan metadata teknis tidak ditampilkan di halaman ini.');
+        $auditSearch=trim((string)($_GET['q'] ?? ''));
+        if(mb_strlen($auditSearch)>100) $auditSearch=mb_substr($auditSearch,0,100);
+        $auditPage=filter_var($_GET['p'] ?? 1,FILTER_VALIDATE_INT);
+        if(!is_int($auditPage) || $auditPage<1) $auditPage=1;
+        $auditWhere='';
+        $auditParams=[];
+        if($auditSearch!=='') {
+            $auditWhere=" WHERE a.action LIKE ? OR a.entity_type LIKE ? OR COALESCE(a.entity_id,'') LIKE ? OR COALESCE(u.username,'') LIKE ? OR COALESCE(u.full_name,'') LIKE ?";
+            $auditLike='%'.$auditSearch.'%';
+            $auditParams=[$auditLike,$auditLike,$auditLike,$auditLike,$auditLike];
+        }
+        $auditCount=$dbx->prepare('SELECT COUNT(*) FROM audit_logs a LEFT JOIN app_users u ON u.id=a.actor_id'.$auditWhere);
+        $auditCount->execute($auditParams);
+        $auditTotal=(int)$auditCount->fetchColumn();
+        $auditPerPage=50;
+        $auditPages=max(1,(int)ceil($auditTotal/$auditPerPage));
+        if($auditPage>$auditPages) $auditPage=$auditPages;
+        $auditOffset=($auditPage-1)*$auditPerPage;
+        $auditStmt=$dbx->prepare('SELECT a.id,a.actor_id,a.action,a.entity_type,a.entity_id,a.created_at,u.username,u.full_name FROM audit_logs a LEFT JOIN app_users u ON u.id=a.actor_id'.$auditWhere.' ORDER BY a.id DESC LIMIT '.$auditPerPage.' OFFSET '.$auditOffset);
+        $auditStmt->execute($auditParams);
+        $auditRows=$auditStmt->fetchAll();
+        echo '<section class="panel"><form method="get" action="index.php" class="form-stack"><input type="hidden" name="page" value="admin-audit"><label>Cari pelaku, tindakan, jenis data, atau ID objek<input name="q" maxlength="100" value="'.e($auditSearch).'" placeholder="Contoh: login, residents, username"></label><button class="button button-primary" type="submit">Cari aktivitas</button></form><p class="muted">Ditemukan '.number_format($auditTotal,0,',','.').' catatan. Halaman menampilkan maksimal 50 aktivitas.</p>';
+        if($auditRows) {
+            echo '<div class="table-wrap"><table><thead><tr><th>Waktu</th><th>Pelaku</th><th>Tindakan</th><th>Jenis data</th><th>ID objek</th></tr></thead><tbody>';
+            foreach($auditRows as $auditRow) {
+                $actorLabel=trim((string)($auditRow['full_name'] ?? ''));
+                if($actorLabel==='') $actorLabel=trim((string)($auditRow['username'] ?? ''));
+                if($actorLabel==='') $actorLabel='Akun tidak tersedia';
+                echo '<tr><td>'.e(date('d M Y H:i',strtotime((string)$auditRow['created_at']))).'</td><td>'.e($actorLabel).'<small>'.e($auditRow['username'] ?? '').'</small></td><td><span class="status-pill neutral">'.e($auditRow['action']).'</span></td><td>'.e($auditRow['entity_type']).'</td><td>'.e($auditRow['entity_id'] ?? '—').'</td></tr>';
+            }
+            echo '</tbody></table></div>';
+            echo '<div class="button-row" style="margin-top:14px">';
+            if($auditPage>1) echo '<a class="button button-small button-outline" href="'.e(app_url('admin-audit',['q'=>$auditSearch,'p'=>$auditPage-1])).'">← Lebih baru</a>';
+            if($auditPage<$auditPages) echo '<a class="button button-small button-outline" href="'.e(app_url('admin-audit',['q'=>$auditSearch,'p'=>$auditPage+1])).'">Lebih lama →</a>';
+            echo '</div>';
+        } else {
+            echo '<div class="empty-news"><div><strong>'.($auditSearch!==''?'Tidak ada aktivitas yang cocok.':'Belum ada catatan aktivitas.').'</strong><p>Coba kata kunci lain atau kembali saat ada aktivitas baru.</p></div></div>';
+        }
         echo '</section>';
     } elseif($mvPage==='admin-resident-export') {
         mv_top('Unduh Data Penduduk','Unduh daftar penduduk lengkap atau paket ZIP berisi CSV dan KTP/KK yang sudah disetujui. Akses khusus Admin Desa; setiap ekspor dicatat.');
