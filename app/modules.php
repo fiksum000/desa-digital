@@ -173,19 +173,20 @@ function module_handle_post(): void {
                 $user = module_require_role(['admin_desa']);
                 $id=filter_input(INPUT_POST,'user_id',FILTER_VALIDATE_INT);
                 $operation=(string)($_POST['operation'] ?? '');
-                $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role='rt' LIMIT 1");
+                $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role IN ('rt','rw') LIMIT 1");
                 $stmt->execute([$id]); $before=$stmt->fetch();
-                if (!$before) throw new RuntimeException('Akun RT tidak ditemukan.');
+                if (!$before) throw new RuntimeException('Akun RT/RW tidak ditemukan.');
+                $entityType=$before['role']==='rt'?'rt_account':'rw_account';
                 if ($operation==='deactivate' || $operation==='activate') {
                     $active=$operation==='activate'?1:0;
                     $pdo->prepare('UPDATE app_users SET is_active=?,session_version=session_version+1 WHERE id=?')->execute([$active,$id]);
-                    module_audit_actor($user,$operation,'rt_account',(int)$id,['is_active'=>(int)$before['is_active']],['is_active'=>$active]);
-                    flash($active?'Akun RT diaktifkan kembali.':'Akun RT dinonaktifkan; sesi lama tidak berlaku lagi.');
+                    module_audit_actor($user,$operation,$entityType,(int)$id,['is_active'=>(int)$before['is_active']],['is_active'=>$active]);
+                    flash($active?'Akun wilayah diaktifkan kembali.':'Akun wilayah dinonaktifkan; sesi lama tidak berlaku lagi.');
                 } elseif ($operation==='reset_password') {
                     $password=(string)($_POST['new_password'] ?? '');
                     if (strlen($password)<14) throw new RuntimeException('Kata sandi baru minimal 14 karakter.');
                     $pdo->prepare('UPDATE app_users SET password_hash=?,must_change_password=1,session_version=session_version+1 WHERE id=?')->execute([password_hash($password,PASSWORD_DEFAULT),$id]);
-                    module_audit_actor($user,'reset_password','rt_account',(int)$id,['session_version'=>(int)$before['session_version']],['session_version'=>(int)$before['session_version']+1]);
+                    module_audit_actor($user,'reset_password',$entityType,(int)$id,['session_version'=>(int)$before['session_version']],['session_version'=>(int)$before['session_version']+1]);
                     flash('Kata sandi direset dan sesi sebelumnya dicabut.');
                 } else throw new RuntimeException('Tindakan akun tidak dikenali.');
                 redirect_to('admin-users');
@@ -313,6 +314,36 @@ function module_handle_post(): void {
                 flash('Usulan perubahan dikirim ke antrean pemeriksaan. Data resmi belum diubah.');
                 redirect_to('perubahan');
             }
+            case 'module_resubmit_change': {
+                $user = module_require_role(['rt']);
+                $id=filter_input(INPUT_POST,'change_id',FILTER_VALIDATE_INT);
+                $reason=trim((string)($_POST['reason'] ?? ''));
+                if(!$id || mb_strlen($reason)<8 || mb_strlen($reason)>1000) throw new RuntimeException('Usulan dan alasan revisi belum valid.');
+                $stmt=$pdo->prepare("SELECT cr.*,r.rt_id AS resident_rt_id FROM resident_change_requests cr LEFT JOIN residents r ON r.id=cr.resident_id WHERE cr.id=? AND cr.status='revision_requested' LIMIT 1");
+                $stmt->execute([$id]); $request=$stmt->fetch();
+                if(!$request || (int)$request['source_rt_id']!==(int)($user['rt_id'] ?? 0) || (int)$request['submitted_by']!==(int)$user['id']) throw new RuntimeException('Usulan revisi tidak ditemukan atau bukan milik wilayah akun ini.');
+                $data=json_decode((string)$request['proposed_data'],true) ?: [];
+                foreach(['full_name','birth_date','gender','phone','address'] as $key) {
+                    if(array_key_exists($key,$_POST)) $data[$key]=trim((string)$_POST[$key]);
+                }
+                $type=(string)$request['change_type'];
+                if($type==='move_rt') {
+                    $target=filter_input(INPUT_POST,'target_rt_id',FILTER_VALIDATE_INT);
+                    if($target) {
+                        if($target===(int)$request['source_rt_id']) throw new RuntimeException('RT tujuan harus berbeda dari RT asal.');
+                        $check=$pdo->prepare('SELECT id FROM rt_units WHERE id=? AND is_active=1');$check->execute([$target]);
+                        if(!$check->fetchColumn()) throw new RuntimeException('RT tujuan tidak tersedia.');
+                        $request['target_rt_id']=$target;
+                    }
+                    if(!(int)$request['target_rt_id']) throw new RuntimeException('Pilih RT tujuan untuk usulan pindah.');
+                }
+                if(isset($data['gender']) && !in_array($data['gender'],['L','P','unknown'],true)) throw new RuntimeException('Jenis kelamin tidak valid.');
+                $stmt=$pdo->prepare("UPDATE resident_change_requests SET proposed_data=?,target_rt_id=?,reason=?,status='submitted',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL,updated_at=NOW() WHERE id=? AND status='revision_requested'");
+                $stmt->execute([json_encode($data,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$request['target_rt_id'], $reason,(int)$id]);
+                module_audit_actor($user,'resubmit_change','resident_change_requests',(int)$id,['status'=>'revision_requested'],['status'=>'submitted']);
+                flash('Usulan revisi dikirim kembali dengan nomor yang sama.');
+                redirect_to('perubahan');
+            }
             case 'module_review_change': {
                 $user = module_require_role(['petugas','admin_desa']);
                 $id=filter_input(INPUT_POST,'change_id',FILTER_VALIDATE_INT);
@@ -408,9 +439,10 @@ function module_handle_post(): void {
                 ];
                 $values=[];
                 foreach($fields as $key=>$meta) {
+                    if (!array_key_exists($key, $_POST['content'] ?? [])) continue;
                     $value=trim((string)($_POST['content'][$key] ?? ''));
                     if(mb_strlen($value)>$meta['max']) throw new RuntimeException($meta['label'].' terlalu panjang.');
-                    if($value!=='') $values[$key]=$value;
+                    $values[$key]=$value;
                 }
                 if (isset($values['map_public_url']) && $values['map_public_url'] !== '') {
                     $mapUrl = $values['map_public_url'];
@@ -545,7 +577,7 @@ function module_handle_post(): void {
             'module_create_rt_account','module_update_rt_user','module_create_rw_account' => 'admin-users',
             'module_create_dusun','module_create_rw' => 'admin-wilayah',
             'module_save_resident_family','module_add_resident' => 'rt-data',
-            'module_submit_change','module_review_change','module_review_resident' => 'perubahan',
+            'module_submit_change','module_resubmit_change','module_review_change','module_review_resident' => 'perubahan',
             'module_upload_document','module_review_document' => 'dokumen',
             'module_save_site' => 'admin-site',
             'module_save_service' => 'admin-services',
