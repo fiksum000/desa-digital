@@ -54,7 +54,7 @@ if (!in_array($page, ['rt-data','dokumen','notifikasi'], true)) {
 }
 
 $tag = bin2hex(random_bytes(4));
-$dusunId = $rwId = $rtId = $userId = $familyId = $residentId = 0;
+$dusunId = $rwId = $rtId = $otherRtId = $otherRwId = $otherRwRtId = $userId = $familyId = $residentId = 0;
 try {
     $pdo->beginTransaction();
     $pdo->prepare('INSERT INTO dusun (name,code) VALUES (?,?)')->execute(['CI Smoke ' . $tag, 'CS' . strtoupper($tag)]);
@@ -63,6 +63,12 @@ try {
     $rwId = (int)$pdo->lastInsertId();
     $pdo->prepare('INSERT INTO rt_units (rw_id,number_code) VALUES (?,?)')->execute([$rwId, '8' . substr($tag,1,1)]);
     $rtId = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO rt_units (rw_id,number_code) VALUES (?,?)')->execute([$rwId, '7' . substr($tag,2,1)]);
+    $otherRtId = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO rw_units (dusun_id,number_code) VALUES (?,?)')->execute([$dusunId, '6' . substr($tag,3,1)]);
+    $otherRwId = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO rt_units (rw_id,number_code) VALUES (?,?)')->execute([$otherRwId, '5' . substr($tag,0,1)]);
+    $otherRwRtId = (int)$pdo->lastInsertId();
     $username = 'ci-rt-' . $tag;
     $pdo->prepare("INSERT INTO app_users (username,full_name,password_hash,role,rt_id,is_active,must_change_password,session_version) VALUES (?,?,?,'rt',?,1,0,1)")
         ->execute([$username, 'CI Smoke RT', password_hash(bin2hex(random_bytes(20)), PASSWORD_DEFAULT), $rtId]);
@@ -101,6 +107,16 @@ try {
     require dirname(__DIR__) . '/index.php';
     $html = (string)ob_get_clean();
 
+    smoke_assert(module_is_allowed_rt($_SESSION['user'], $rtId), 'An RT account must access its own active RT.');
+    smoke_assert(!module_is_allowed_rt($_SESSION['user'], $otherRtId), 'An RT account must not access another RT in the same RW.');
+    smoke_assert(!module_is_allowed_rt($_SESSION['user'], $otherRwRtId), 'An RT account must not access an RT in another RW.');
+    $rwUser = $_SESSION['user'];
+    $rwUser['role'] = 'rw';
+    $rwUser['rw_id'] = $rwId;
+    $rwUser['rt_id'] = null;
+    smoke_assert(module_is_allowed_rt($rwUser, $rtId) && module_is_allowed_rt($rwUser, $otherRtId), 'An RW account must access RTs within its own RW.');
+    smoke_assert(!module_is_allowed_rt($rwUser, $otherRwRtId), 'An RW account must not access an RT outside its RW.');
+
     if ($page === 'rt-data') {
         smoke_assert(str_contains($html, 'Daftar penduduk'), 'RT directory heading did not render.');
         smoke_assert(str_contains($html, 'Data Belum Lengkap'), 'RT incomplete-record queue did not render.');
@@ -133,7 +149,10 @@ try {
             if ($userId) $pdo->prepare('DELETE FROM user_notifications WHERE user_id=?')->execute([$userId]);
             if ($userId) $pdo->prepare('DELETE FROM app_users WHERE id=?')->execute([$userId]);
             if ($rtId) $pdo->prepare('DELETE FROM rt_units WHERE id=?')->execute([$rtId]);
+            if ($otherRtId) $pdo->prepare('DELETE FROM rt_units WHERE id=?')->execute([$otherRtId]);
+            if ($otherRwRtId) $pdo->prepare('DELETE FROM rt_units WHERE id=?')->execute([$otherRwRtId]);
             if ($rwId) $pdo->prepare('DELETE FROM rw_units WHERE id=?')->execute([$rwId]);
+            if ($otherRwId) $pdo->prepare('DELETE FROM rw_units WHERE id=?')->execute([$otherRwId]);
             if ($dusunId) $pdo->prepare('DELETE FROM dusun WHERE id=?')->execute([$dusunId]);
         } catch (Throwable $cleanupError) {
             fwrite(STDERR, "WARN: could not clean synthetic smoke fixture.\n");
