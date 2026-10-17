@@ -1204,3 +1204,64 @@ function module_serve_private_document(): void {
         http_response_code(500); exit('Dokumen belum dapat diakses.');
     }
 }
+
+function module_can_access_service_file(array $user, array $file): bool {
+    $role = (string)($user['role'] ?? '');
+    if ($role === 'warga') {
+        return (int)($user['id'] ?? 0) > 0
+            && (int)($file['applicant_id'] ?? 0) === (int)$user['id'];
+    }
+    return in_array($role, ['petugas','admin_desa','kepala_desa'], true);
+}
+
+function module_serve_private_service_file(): void {
+    if ((string)($_GET['page'] ?? '') !== 'service-file') return;
+    $user = require_login();
+    $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+    if (!$id) { http_response_code(404); exit('Lampiran tidak ditemukan.'); }
+    try {
+        $stmt = db()->prepare(
+            'SELECT f.*, sr.applicant_id, sr.assigned_to, sr.status AS request_status
+             FROM service_request_files f
+             JOIN service_requests sr ON sr.id=f.request_id
+             WHERE f.id=? LIMIT 1'
+        );
+        $stmt->execute([$id]);
+        $file = $stmt->fetch();
+        if (!$file || !module_can_access_service_file($user, $file)) {
+            http_response_code(404);
+            exit('Lampiran tidak ditemukan.');
+        }
+        $key = (string)$file['storage_key'];
+        if (!preg_match('/^[a-f0-9]{48}\\.(jpg|png|webp|pdf)$/', $key)) {
+            http_response_code(404);
+            exit('Lampiran tidak ditemukan.');
+        }
+        $path = dirname(__DIR__) . '/storage/uploads/' . $key;
+        if (!is_file($path)) {
+            http_response_code(404);
+            exit('File lampiran tidak ditemukan pada penyimpanan privat.');
+        }
+        $mime = (string)$file['mime_type'];
+        if (!in_array($mime, ['image/jpeg','image/png','image/webp','application/pdf'], true)) {
+            http_response_code(404);
+            exit('Format lampiran tidak diizinkan.');
+        }
+        module_audit_actor($user, 'download', 'service_request_files', (int)$id, [
+            'request_status' => (string)$file['request_status']
+        ]);
+        $extension = pathinfo($key, PATHINFO_EXTENSION);
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . (string)filesize($path));
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="lampiran-permohonan-' . (int)$id . '.' . $extension . '"');
+        header('Cache-Control: private, no-store, max-age=0');
+        readfile($path);
+        exit;
+    } catch (Throwable $e) {
+        error_log('Private service attachment request failed.');
+        http_response_code(500);
+        exit('Lampiran belum dapat diakses.');
+    }
+}
+
