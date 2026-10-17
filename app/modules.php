@@ -117,6 +117,26 @@ function module_create_rt_account(array $user): never {
     redirect_to('admin-users');
 }
 
+function module_upload_public_pdf(string $field): ?string {
+    if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
+    $file=$_FILES[$field];
+    if(($file['error'] ?? UPLOAD_ERR_OK)!==UPLOAD_ERR_OK || (int)$file['size']>10*1024*1024) throw new RuntimeException('PDF gagal diunggah atau melebihi 10 MB.');
+    if(!is_uploaded_file($file['tmp_name'] ?? '')) throw new RuntimeException('File PDF tidak valid.');
+    $mime=(new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+    if($mime!=='application/pdf') throw new RuntimeException('Dokumen transparansi harus berupa PDF yang valid.');
+    $dir=dirname(__DIR__).'/assets/uploads';
+    if(!is_dir($dir) && !mkdir($dir,0750,true) && !is_dir($dir)) throw new RuntimeException('Penyimpanan media publik tidak tersedia.');
+    $name=bin2hex(random_bytes(18)).'.pdf';
+    if(!move_uploaded_file($file['tmp_name'],$dir.'/'.$name)) throw new RuntimeException('PDF gagal disimpan.');
+    return 'assets/uploads/'.$name;
+}
+
+function module_csv_safe(string $value): string {
+    $value = str_replace(["\0","\r"], '', $value);
+    if (preg_match('/^[\t ]*[=+@-]/', $value)) return "'" . $value;
+    return $value;
+}
+
 function module_handle_post(): void {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') return;
     $action = $_POST['action'] ?? '';
@@ -435,6 +455,65 @@ function module_handle_post(): void {
                 module_audit_actor($user,'save','service_types',$id,$before ?? null,['name'=>$name,'slug'=>$slug,'is_published'=>$published]);
                 flash('Jenis layanan disimpan.'); redirect_to('admin-services');
             }
+            case 'module_save_directory': {
+                $user = module_require_role(['petugas','admin_desa']);
+                $id=filter_input(INPUT_POST,'item_id',FILTER_VALIDATE_INT);
+                $kind=(string)($_POST['kind'] ?? 'umkm');
+                $title=trim((string)($_POST['title'] ?? ''));
+                $slug=trim((string)($_POST['slug'] ?? ''));
+                $excerpt=trim((string)($_POST['excerpt'] ?? ''));
+                $description=trim((string)($_POST['description'] ?? ''));
+                $address=trim((string)($_POST['address'] ?? ''));
+                $contact=trim((string)($_POST['contact'] ?? ''));
+                $status=(string)($_POST['status'] ?? 'draft');
+                if(!in_array($kind,['umkm','wisata'],true) || !in_array($status,['draft','published','archived'],true)) throw new RuntimeException('Jenis atau status konten tidak valid.');
+                if(mb_strlen($title)<3 || mb_strlen($title)>220 || mb_strlen($description)<5 || mb_strlen($description)>30000) throw new RuntimeException('Judul atau deskripsi konten belum valid.');
+                if(!preg_match('/^[a-z0-9-]{3,220}$/',$slug)) $slug=safe_slug($title).'-'.bin2hex(random_bytes(3));
+                $image=upload_public_image('image');
+                if($id) {
+                    $stmt=$pdo->prepare('SELECT id,title,status,image_key FROM public_directory_items WHERE id=? LIMIT 1');$stmt->execute([$id]);$before=$stmt->fetch();
+                    if(!$before) throw new RuntimeException('Konten tidak ditemukan.');
+                    $stmt=$pdo->prepare('UPDATE public_directory_items SET kind=?,title=?,slug=?,excerpt=?,description=?,address=?,contact=?,image_key=COALESCE(?,image_key),alt_text=?,status=? WHERE id=?');
+                    $stmt->execute([$kind,$title,$slug,mb_substr($excerpt,0,500),$description,mb_substr($address,0,500),mb_substr($contact,0,160),$image,trim((string)($_POST['alt_text'] ?? '')) ?: $title,$status,$id]);
+                } else {
+                    $stmt=$pdo->prepare('INSERT INTO public_directory_items (kind,title,slug,excerpt,description,address,contact,image_key,alt_text,status,author_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+                    $stmt->execute([$kind,$title,$slug,mb_substr($excerpt,0,500),$description,mb_substr($address,0,500),mb_substr($contact,0,160),$image,trim((string)($_POST['alt_text'] ?? '')) ?: $title,$status,(int)$user['id']]);
+                    $id=(int)$pdo->lastInsertId();$before=null;
+                }
+                module_audit_actor($user,'save','public_directory_items',$id,$before ?? null,['kind'=>$kind,'title'=>$title,'status'=>$status]);
+                flash($status==='published'?'Konten berhasil diterbitkan.':'Konten tersimpan sebagai '.($status==='draft'?'draf':'arsip').'.');
+                redirect_to($kind==='wisata'?'admin-directory':'admin-directory');
+            }
+            case 'module_save_budget': {
+                $user = module_require_role(['admin_desa']);
+                $id=filter_input(INPUT_POST,'report_id',FILTER_VALIDATE_INT);
+                $year=filter_input(INPUT_POST,'fiscal_year',FILTER_VALIDATE_INT);
+                $title=trim((string)($_POST['title'] ?? ''));
+                $summary=trim((string)($_POST['summary'] ?? ''));
+                $amountText=trim((string)($_POST['amount'] ?? ''));
+                $amount=null;
+                if($amountText!=='') {
+                    $normal=str_replace(['.',' '],['',''],$amountText);
+                    $normal=str_replace(',','.',$normal);
+                    if(!is_numeric($normal) || (float)$normal<0) throw new RuntimeException('Nilai anggaran tidak valid.');
+                    $amount=number_format((float)$normal,2,'.','');
+                }
+                $status=(string)($_POST['status'] ?? 'draft');
+                if(!$year || $year<2000 || $year>2100 || mb_strlen($title)<4 || mb_strlen($title)>220 || mb_strlen($summary)<5 || mb_strlen($summary)>20000 || !in_array($status,['draft','published','archived'],true)) throw new RuntimeException('Tahun, judul, ringkasan, atau status belum valid.');
+                $pdf=module_upload_public_pdf('report_pdf');
+                if($id) {
+                    $stmt=$pdo->prepare('SELECT id,title,status,document_key FROM budget_reports WHERE id=? LIMIT 1');$stmt->execute([$id]);$before=$stmt->fetch();
+                    if(!$before) throw new RuntimeException('Laporan tidak ditemukan.');
+                    $stmt=$pdo->prepare("UPDATE budget_reports SET fiscal_year=?,title=?,summary=?,amount=?,document_key=COALESCE(?,document_key),status=?,published_by=CASE WHEN ?='published' THEN ? ELSE published_by END,published_at=CASE WHEN ?='published' THEN NOW() ELSE published_at END WHERE id=?");
+                    $stmt->execute([$year,$title,$summary,$amount,$pdf,$status,$status,(int)$user['id'],$status,$id]);
+                } else {
+                    $stmt=$pdo->prepare("INSERT INTO budget_reports (fiscal_year,title,summary,amount,document_key,status,published_by,published_at) VALUES (?,?,?,?,?,?,CASE WHEN ?='published' THEN ? ELSE NULL END,CASE WHEN ?='published' THEN NOW() ELSE NULL END)");
+                    $stmt->execute([$year,$title,$summary,$amount,$pdf,$status,$status,(int)$user['id'],$status]);$id=(int)$pdo->lastInsertId();$before=null;
+                }
+                module_audit_actor($user,'save','budget_reports',$id,$before ?? null,['year'=>$year,'title'=>$title,'status'=>$status]);
+                flash($status==='published'?'Laporan transparansi diterbitkan.':'Laporan transparansi disimpan sebagai draf/arsip.');
+                redirect_to('admin-budget');
+            }
             default:
                 throw new RuntimeException('Aksi modul tidak dikenal.');
         }
@@ -460,6 +539,61 @@ function module_handle_post(): void {
         };
         redirect_to($fallback);
     }
+}
+
+function module_serve_export(): void {
+    if ((string)($_GET['page'] ?? '') !== 'module-export') return;
+    $user=require_login();
+    $kind=(string)($_GET['kind'] ?? '');
+    $reason=trim((string)($_GET['reason'] ?? ''));
+    if(mb_strlen($reason)<4 || mb_strlen($reason)>300) { http_response_code(400); exit('Isi alasan ekspor minimal 4 karakter. Kembali ke menu laporan.'); }
+    $pdo=db();
+    $role=(string)($user['role'] ?? '');
+    if(in_array($kind,['residents','families'],true)) {
+        if(!in_array($role,['rt','rw','petugas','admin_desa'],true)) { http_response_code(403); exit('Akses ekspor tidak diizinkan.'); }
+        $where='';$params=[];
+        if($role==='rt') { $where=' WHERE r.rt_id=?'; $params[]=(int)$user['rt_id']; }
+        elseif($role==='rw') { $where=' WHERE rt.rw_id=?'; $params[]=(int)$user['rw_id']; }
+        if($kind==='residents') {
+            $sql="SELECT r.full_name,CONCAT('************',RIGHT(r.nik,4)) AS nik_masked,r.gender,r.resident_status,d.name AS dusun_name,rw.number_code AS rw_code,rt.number_code AS rt_code,r.created_at FROM residents r JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id".$where." ORDER BY d.name,rw.number_code,rt.number_code,r.full_name";
+            $stmt=$pdo->prepare($sql);$stmt->execute($params);
+            $rows=$stmt->fetchAll();
+            $headers=['Nama','NIK (disamarkan)','Jenis kelamin','Status','Dusun','RW','RT','Tanggal input'];
+        } else {
+            $sql="SELECT f.id,d.name AS dusun_name,rw.number_code AS rw_code,rt.number_code AS rt_code,f.status,COUNT(r.id) AS jumlah_anggota,f.created_at FROM family_records f JOIN rt_units rt ON rt.id=f.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id LEFT JOIN residents r ON r.family_id=f.id".$where." GROUP BY f.id,d.name,rw.number_code,rt.number_code,f.status,f.created_at ORDER BY d.name,rw.number_code,rt.number_code,f.id";
+            $stmt=$pdo->prepare($sql);$stmt->execute($params);$rows=$stmt->fetchAll();
+            $headers=['ID internal keluarga','Dusun','RW','RT','Status','Jumlah anggota','Tanggal input'];
+        }
+    } elseif(in_array($kind,['requests','complaints'],true)) {
+        if(!in_array($role,['petugas','admin_desa','kepala_desa'],true)) { http_response_code(403); exit('Ekspor surat/pengaduan hanya untuk petugas berwenang.'); }
+        if($kind==='requests') {
+            $rows=$pdo->query('SELECT sr.tracking_code,st.name AS service_name,sr.subject,sr.status,sr.public_status_note,sr.created_at,sr.updated_at FROM service_requests sr JOIN service_types st ON st.id=sr.service_type_id ORDER BY sr.created_at DESC')->fetchAll();
+            $headers=['Kode pelacakan','Jenis layanan','Subjek','Status','Catatan publik','Dibuat','Diperbarui'];
+        } else {
+            $rows=$pdo->query('SELECT tracking_code,title,category,status,public_response,created_at,updated_at FROM complaints ORDER BY created_at DESC')->fetchAll();
+            $headers=['Kode pelacakan','Judul','Kategori','Status','Tanggapan publik','Dibuat','Diperbarui'];
+        }
+    } else { http_response_code(400); exit('Jenis ekspor tidak dikenali.'); }
+
+    module_audit_actor($user,'export','report_'.$kind,null,null,['kind'=>$kind,'row_count'=>count($rows),'reason'=>$reason]);
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="desa-digital-'.$kind.'-'.date('Ymd-His').'.csv"');
+    header('Cache-Control: private, no-store, max-age=0');
+    $out=fopen('php://output','wb');
+    fwrite($out,"\xEF\xBB\xBF");
+    fputcsv($out,$headers,';','"','\\');
+    foreach($rows as $row) {
+        $line=[];
+        foreach(array_values($row) as $value) {
+            if($value===null) $value='';
+            elseif(is_array($value) || is_object($value)) $value=json_encode($value,JSON_UNESCAPED_UNICODE);
+            else $value=(string)$value;
+            $line[]=module_csv_safe($value);
+        }
+        fputcsv($out,$line,';','"','\\');
+    }
+    fclose($out);
+    exit;
 }
 
 function module_serve_private_document(): void {
