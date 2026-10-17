@@ -14,7 +14,7 @@ function load_text(string $relative): string {
     return is_file($path) ? (string)file_get_contents($path) : '';
 }
 foreach ([
-    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css',
+    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css', 'bin/migrate_service_letters.php',
     'assets/app.js', 'assets/village-hero.svg', 'assets/village-hero.webp', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php', 'bin/backup.sh', 'bin/restore.sh',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
@@ -107,6 +107,8 @@ foreach ([
     'function module_serve_private_service_file',
     'function module_can_access_service_file',
     'function module_service_status_transition_allowed',
+    'letter_number VARCHAR(100) NULL',
+    'UNIQUE KEY uq_service_letter_number (letter_number)',
     'function module_serve_export',
     'function module_upload_private_file',
     'module_import_residents',
@@ -128,6 +130,9 @@ foreach ([
     check_true(str_contains($views, $needle), "Module views missing expected route: {$needle}");
 }
 
+$letterMigration = load_text('bin/migrate_service_letters.php');
+check_true(str_contains($letterMigration, 'letter_number') && str_contains($letterMigration, 'letter_issued_by') && str_contains($letterMigration, 'letter_issued_at'), 'Service letter migration must cover number, issuer, and issue time.');
+check_true(str_contains($letterMigration, 'uq_service_letter_number') && str_contains($letterMigration, 'fk_request_letter_issuer'), 'Service letter migration must create a unique number index and issuer foreign key.');
 $privacyMigration = load_text('bin/migrate_private_identifiers.php');
 check_true(str_contains($privacyMigration, 'DROP INDEX') && str_contains($privacyMigration, 'decrypt_private_identifier'), 'A safe and rerunnable migration must exist for earlier development databases.');
 check_true(str_contains($modules, 'family_number_hash=?') && str_contains($modules, 'nik_hash=?'), 'Duplicate detection must compare keyed hashes, not cleartext identifiers.');
