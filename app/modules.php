@@ -1227,7 +1227,13 @@ function module_can_access_service_file(array $user, array $file): bool {
         return (int)($user['id'] ?? 0) > 0
             && (int)($file['applicant_id'] ?? 0) === (int)$user['id'];
     }
-    return in_array($role, ['petugas','admin_desa','kepala_desa'], true);
+    if ($role === 'petugas') {
+        // Unassigned requests remain in the staff queue; once assigned, only
+        // the assigned officer may open private attachments for that request.
+        $assignedTo = (int)($file['assigned_to'] ?? 0);
+        return $assignedTo === 0 || $assignedTo === (int)($user['id'] ?? 0);
+    }
+    return in_array($role, ['admin_desa','kepala_desa'], true);
 }
 
 function module_serve_private_service_file(): void {
