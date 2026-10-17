@@ -396,6 +396,7 @@ function module_handle_post(): void {
                             $stmt=$pdo->prepare("INSERT INTO family_records (family_number,family_number_cipher,family_number_hash,rt_id,address,status,created_by) VALUES (?,?,?,?,?,'pending_review',?)");
                             $stmt->execute([$familyMasked,$familyCipher,$familyHash,$rtId,$familyRows[0]['address'],(int)$user['id']]);
                             $familyId=(int)$pdo->lastInsertId();$familiesCreated++;
+                            $family=['id'=>$familyId,'rt_id'=>$rtId,'status'=>'pending_review','address'=>$familyRows[0]['address'],'head_resident_id'=>null];
                         }
                         foreach($familyRows as $row) {
                             $nikHash = private_identifier_hash((string)$row['nik']);
