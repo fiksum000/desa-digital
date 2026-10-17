@@ -543,7 +543,7 @@ try {
     }
     if ($page === 'track' && isset($_GET['code'])) {
         $code = strtoupper(trim((string)$_GET['code']));
-        if (preg_match('/^[A-Z0-9-]{5,32}$/', $code)) {
+        if (preg_match('/^[A-Z0-9-]{5,48}$/', $code)) {
             $stmt = $pdo->prepare('SELECT tracking_code,subject AS title,status,public_status_note AS public_note,created_at,updated_at,\'service\' AS item_type FROM service_requests WHERE tracking_code=? UNION ALL SELECT tracking_code,title,status,public_response,created_at,updated_at,\'complaint\' AS item_type FROM complaints WHERE tracking_code=? LIMIT 1');
             $stmt->execute([$code,$code]); $tracking = $stmt->fetch() ?: null;
         }
@@ -667,7 +667,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
     <a class="service-card amber-card" href="<?= e(app_url('pengaduan')) ?>"><span class="service-icon">⚑</span><h2><?= e(site_val('service_card_complaint_title','Pengaduan Warga')) ?></h2><p><?= e(site_val('service_card_complaint_text','Sampaikan aspirasi, keluhan, atau laporan Anda.')) ?></p><span class="round-arrow">→</span></a>
     <a class="service-card blue-card" href="<?= e(app_url('profil')) ?>"><span class="service-icon">ⓘ</span><h2><?= e(site_val('service_card_info_title','Informasi Desa')) ?></h2><p><?= e(site_val('service_card_info_text','Akses informasi seputar program, kegiatan, dan data desa.')) ?></p><span class="round-arrow">→</span></a>
     <div class="track-card"><div class="track-heading"><span class="track-icon">◷</span><div><h2><?= e(site_val('home_tracking_title','Cek Status Pengajuan')) ?></h2><p><?= e(site_val('home_tracking_subtitle','Masukkan nomor pengajuan Anda')) ?></p></div></div>
-      <form method="get" action="index.php" class="track-form"><input type="hidden" name="page" value="track"><label class="sr-only" for="home-track"><?= e(site_val('tracking_placeholder','Kode pengajuan')) ?></label><input id="home-track" name="code" placeholder="<?= e(site_val('tracking_placeholder','Contoh: SR-260101-AB12CD34')) ?>" required maxlength="32"><button type="submit" aria-label="<?= e(site_val('tracking_check_button','Cek status')) ?>">⌕</button></form>
+      <form method="get" action="index.php" class="track-form"><input type="hidden" name="page" value="track"><label class="sr-only" for="home-track"><?= e(site_val('tracking_placeholder','Kode pengajuan')) ?></label><input id="home-track" name="code" placeholder="<?= e(site_val('tracking_placeholder','Contoh: SR-261017-0123456789ABCDEF0123456789ABCDEF')) ?>" required maxlength="48"><button type="submit" aria-label="<?= e(site_val('tracking_check_button','Cek status')) ?>">⌕</button></form>
     </div>
   </section>
 
@@ -715,7 +715,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
 
 <?php elseif ($page === 'track'): ?>
   <section class="page-hero"><span class="eyebrow"><?= e(site_val('tracking_eyebrow','Transparan & Terpantau')) ?></span><h1><?= e(site_val('tracking_title','Lacak Pengajuan')) ?></h1><p><?= e(site_val('tracking_intro','Masukkan kode pelacakan untuk melihat status dan pembaruan yang boleh dibagikan kepada publik.')) ?></p></section>
-  <section class="panel narrow-panel"><form method="get" class="track-form large-track"><input type="hidden" name="page" value="track"><label class="sr-only" for="track-code"><?= e(site_val('tracking_placeholder','Kode pelacakan')) ?></label><input id="track-code" name="code" placeholder="<?= e(site_val('tracking_placeholder','Contoh: SR-260101-AB12CD34')) ?>" required maxlength="32" value="<?= e((string)($_GET['code'] ?? '')) ?>"><button type="submit"><?= e(site_val('tracking_check_button','Periksa')) ?></button></form>
+  <section class="panel narrow-panel"><form method="get" class="track-form large-track"><input type="hidden" name="page" value="track"><label class="sr-only" for="track-code"><?= e(site_val('tracking_placeholder','Kode pelacakan')) ?></label><input id="track-code" name="code" placeholder="<?= e(site_val('tracking_placeholder','Contoh: SR-261017-0123456789ABCDEF0123456789ABCDEF')) ?>" required maxlength="48" value="<?= e((string)($_GET['code'] ?? '')) ?>"><button type="submit"><?= e(site_val('tracking_check_button','Periksa')) ?></button></form>
   <?php if (isset($_GET['code'])): ?><?php if ($tracking): ?><div class="tracking-result"><span class="status-pill <?= e(status_class($tracking['status'])) ?>"><?= e(status_text($tracking['status'])) ?></span><h2><?= e($tracking['title']) ?></h2><p class="muted"><?= e(site_val('tracking_code_label','Kode')) ?>: <strong><?= e($tracking['tracking_code']) ?></strong></p><p><?= e($tracking['public_note'] ?: site_val('tracking_public_note_fallback','Belum ada catatan pembaruan untuk ditampilkan.')) ?></p><dl class="detail-list"><div><dt><?= e(site_val('tracking_sent_label','Dikirim')) ?></dt><dd><?= e(date('d M Y H:i',strtotime($tracking['created_at']))) ?></dd></div><div><dt><?= e(site_val('tracking_last_update_label','Pembaruan terakhir')) ?></dt><dd><?= e(date('d M Y H:i',strtotime($tracking['updated_at']))) ?></dd></div></dl></div><?php else: ?><p class="flash error inline-flash"><?= e(site_val('tracking_not_found','Kode tidak ditemukan. Periksa kembali kode pada bukti pengajuan.')) ?></p><?php endif; ?><?php endif; ?>
   </section>
 
