@@ -157,6 +157,51 @@ function auth_rate_limit_clear_account(string $username): void {
     db()->prepare("DELETE FROM auth_attempts WHERE bucket_hash=? AND bucket_type='account'")->execute([$keys['account']]);
 }
 
+/**
+ * Atomically limit write actions for an authenticated account using the existing
+ * authentication-throttle table. Keys are HMACs; raw account IDs are not stored.
+ */
+function user_action_rate_limit_consume(string $action, int $userId, int $limit = 10, int $windowSeconds = 3600): void {
+    if ($userId < 1 || !preg_match('/^[a-z][a-z0-9_]{2,63}$/D', $action) || $limit < 1 || $windowSeconds < 1) {
+        throw new InvalidArgumentException('Konfigurasi pembatasan tindakan tidak valid.');
+    }
+    $key = private_identifier_key('user-action-rate-limit');
+    $bucketHash = hash_hmac('sha256', "user-action\\0" . $action . "\\0" . $userId, $key);
+    $pdo = db();
+    $now = time();
+    $pdo->beginTransaction();
+    try {
+        $insert = $pdo->prepare("INSERT IGNORE INTO auth_attempts (bucket_hash,bucket_type,attempts,window_started_at,locked_until) VALUES (?,'account',0,NOW(),NULL)");
+        $insert->execute([$bucketHash]);
+        $select = $pdo->prepare('SELECT attempts,window_started_at,locked_until FROM auth_attempts WHERE bucket_hash=? FOR UPDATE');
+        $select->execute([$bucketHash]);
+        $row = $select->fetch();
+        if (!$row) throw new RuntimeException('Pembatasan pengiriman tidak dapat diperbarui.');
+
+        $windowStart = strtotime((string)$row['window_started_at']) ?: $now;
+        $lockedUntil = !empty($row['locked_until']) ? (strtotime((string)$row['locked_until']) ?: 0) : 0;
+        $attempts = (int)$row['attempts'];
+        if ($windowStart <= $now - $windowSeconds || ($lockedUntil > 0 && $lockedUntil <= $now)) {
+            $attempts = 0;
+            $windowStart = $now;
+            $lockedUntil = 0;
+        }
+        if ($lockedUntil > $now || $attempts >= $limit) {
+            $pdo->rollBack();
+            throw new RuntimeException('Batas pengiriman tercapai. Tunggu hingga pembatasan berakhir sebelum mencoba lagi.');
+        }
+
+        $attempts++;
+        $lock = $attempts >= $limit ? date('Y-m-d H:i:s', $windowStart + $windowSeconds) : null;
+        $update = $pdo->prepare('UPDATE auth_attempts SET attempts=?,window_started_at=?,locked_until=?,updated_at=NOW() WHERE bucket_hash=?');
+        $update->execute([$attempts,date('Y-m-d H:i:s',$windowStart),$lock,$bucketHash]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
 function e(?string $value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
