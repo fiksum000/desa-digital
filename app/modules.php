@@ -75,9 +75,9 @@ function module_change_snapshot(int $residentId, int $familyId, string $changeTy
         'resident_digest' => hash_hmac('sha256', $encode($resident), $key),
         'family_digest' => hash_hmac('sha256', $encode($family), $key),
     ];
-    if ($changeType === 'move_rt') {
-        $snapshot['household_digest'] = hash_hmac('sha256', $encode(array_values($members)), $key);
-    }
+    // Detects concurrent household changes (including a newly added family member)
+    // for corrections as well as whole-household RT moves.
+    $snapshot['household_digest'] = hash_hmac('sha256', $encode(array_values($members)), $key);
     return $snapshot;
 }
 
@@ -98,9 +98,8 @@ function module_change_snapshot_matches(array $request): bool {
     );
     if (!hash_equals((string)$source['resident_digest'], (string)$current['resident_digest'])
         || !hash_equals((string)$source['family_digest'], (string)$current['family_digest'])) return false;
-    if (($request['change_type'] ?? '') === 'move_rt'
-        && (!isset($source['household_digest'])
-            || !hash_equals((string)$source['household_digest'], (string)($current['household_digest'] ?? '')))) return false;
+    if (!isset($source['household_digest'])
+        || !hash_equals((string)$source['household_digest'], (string)($current['household_digest'] ?? ''))) return false;
     return true;
 }
 
