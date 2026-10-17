@@ -51,6 +51,8 @@ jobs:
         run: mariadb --host=127.0.0.1 --user=root --password="$DB_ROOT_PASSWORD" --database=desa_digital < schema.sql
       - name: Database integration tests
         run: php tests/schema_integration.php
+      - name: Verify Owner role migration is idempotent
+        run: APP_KEY="$(openssl rand -hex 32)" php bin/migrate_owner_role.php
       - name: Verify identifier migration is idempotent
         run: APP_KEY="$(openssl rand -hex 32)" php bin/migrate_private_identifiers.php
       - name: Verify service letter migration is idempotent
