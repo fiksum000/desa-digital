@@ -780,8 +780,8 @@ function module_serve_export(): void {
     header('Content-Disposition: attachment; filename="desa-digital-'.$kind.'-'.date('Ymd-His').'.csv"');
     header('Cache-Control: private, no-store, max-age=0');
     $out=fopen('php://output','wb');
-    fwrite($out,"\\xEF\\xBB\\xBF");
-    fputcsv($out,$headers,';','"','\\\\');
+    fwrite($out,"\xEF\xBB\xBF");
+    fputcsv($out,$headers,';','"','\\');
     foreach($rows as $row) {
         $line=[];
         foreach(array_values($row) as $value) {
@@ -790,7 +790,7 @@ function module_serve_export(): void {
             else $value=(string)$value;
             $line[]=module_csv_safe($value);
         }
-        fputcsv($out,$line,';','"','\\\\');
+        fputcsv($out,$line,';','"','\\');
     }
     fclose($out);
     exit;
