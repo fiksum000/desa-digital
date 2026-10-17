@@ -35,6 +35,11 @@ check_true(module_can_access_service_file(['id'=>42,'role'=>'warga'], $filePolic
 check_true(!module_can_access_service_file(['id'=>43,'role'=>'warga'], $filePolicy), 'A resident must not access another resident service request attachments.');
 check_true(module_can_access_service_file(['id'=>8,'role'=>'petugas'], $filePolicy), 'Authorized service staff must be able to process request attachments.');
 check_true(!module_can_access_service_file(['id'=>9,'role'=>'rt'], $filePolicy), 'RT accounts must not access the private service attachment endpoint.');
+$letterAccessFixture = ['applicant_id' => 42];
+check_true(module_can_access_service_letter(['id'=>42,'role'=>'warga'], $letterAccessFixture), 'Owner access to an issued service letter should be allowed.');
+check_true(!module_can_access_service_letter(['id'=>43,'role'=>'warga'], $letterAccessFixture), 'Access to another residents service letter should be denied.');
+check_true(!module_can_access_service_letter(['id'=>9,'role'=>'rt'], $letterAccessFixture), 'RT users must not access the issued letter PDF endpoint.');
+
 $pdfSample = module_build_service_letter_pdf([
     'service_name'=>'Surat Uji',
     'letter_number'=>'CI-LETTER-001',
