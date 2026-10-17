@@ -701,41 +701,87 @@ function module_serve_export(): void {
     $kind=(string)($_GET['kind'] ?? '');
     $reason=trim((string)($_GET['reason'] ?? ''));
     if(mb_strlen($reason)<4 || mb_strlen($reason)>300) { http_response_code(400); exit('Isi alasan ekspor minimal 4 karakter. Kembali ke menu laporan.'); }
+    $parseDate = static function(string $value): ?string {
+        $value=trim($value);
+        if($value==='') return null;
+        if(!preg_match('/^\\d{4}-\\d{2}-\\d{2}$/',$value)) throw new RuntimeException('Format tanggal ekspor tidak valid.');
+        [$year,$month,$day]=array_map('intval',explode('-',$value));
+        if(!checkdate($month,$day,$year)) throw new RuntimeException('Tanggal ekspor tidak valid.');
+        return $value;
+    };
+    try {
+        $dateFrom=$parseDate((string)($_GET['from'] ?? ''));
+        $dateTo=$parseDate((string)($_GET['to'] ?? ''));
+        if($dateFrom && $dateTo && $dateFrom>$dateTo) throw new RuntimeException('Tanggal awal ekspor harus sama dengan atau sebelum tanggal akhir.');
+        $statusFilter=trim((string)($_GET['status'] ?? ''));
+    } catch (RuntimeException $e) {
+        http_response_code(400); exit(e($e->getMessage()));
+    }
     $pdo=db();
     $role=(string)($user['role'] ?? '');
+    $rows=[];$headers=[];
+    $allowedResident=['draft','pending_review','active','moved','deceased','archived'];
+    $allowedFamily=['draft','pending_review','active','moved','archived'];
+    $allowedRequest=['submitted','in_review','revision_requested','approved','rejected','ready','completed','cancelled'];
+    $allowedComplaint=['received','in_review','in_progress','waiting_reporter','resolved','rejected'];
     if(in_array($kind,['residents','families'],true)) {
         if(!in_array($role,['rt','rw','petugas','admin_desa'],true)) { http_response_code(403); exit('Akses ekspor tidak diizinkan.'); }
-        $where='';$params=[];
-        if($role==='rt') { $where=' WHERE r.rt_id=?'; $params[]=(int)$user['rt_id']; }
-        elseif($role==='rw') { $where=' WHERE rt.rw_id=?'; $params[]=(int)$user['rw_id']; }
+        $whereParts=[];$params=[];
+        if($role==='rt') { $whereParts[]='rt.id=?'; $params[]=(int)$user['rt_id']; }
+        elseif($role==='rw') { $whereParts[]='rt.rw_id=?'; $params[]=(int)$user['rw_id']; }
         if($kind==='residents') {
-            $sql="SELECT r.full_name,CONCAT('************',RIGHT(r.nik,4)) AS nik_masked,r.gender,r.resident_status,d.name AS dusun_name,rw.number_code AS rw_code,rt.number_code AS rt_code,r.created_at FROM residents r JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id".$where." ORDER BY d.name,rw.number_code,rt.number_code,r.full_name";
-            $stmt=$pdo->prepare($sql);$stmt->execute($params);
-            $rows=$stmt->fetchAll();
+            if($statusFilter!=='' && !in_array($statusFilter,$allowedResident,true)) { http_response_code(400); exit('Status penduduk tidak valid.'); }
+            if($statusFilter!=='') { $whereParts[]='r.resident_status=?';$params[]=$statusFilter; }
+            if($dateFrom) {$whereParts[]='r.created_at >= ?';$params[]=$dateFrom.' 00:00:00';}
+            if($dateTo) {$whereParts[]='r.created_at < DATE_ADD(?, INTERVAL 1 DAY)';$params[]=$dateTo.' 00:00:00';}
+            $sql="SELECT r.full_name,CONCAT('************',RIGHT(r.nik,4)) AS nik_masked,r.gender,r.resident_status,d.name AS dusun_name,rw.number_code AS rw_code,rt.number_code AS rt_code,r.created_at FROM residents r JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id".($whereParts?' WHERE '.implode(' AND ',$whereParts):'')." ORDER BY d.name,rw.number_code,rt.number_code,r.full_name";
+            $stmt=$pdo->prepare($sql);$stmt->execute($params);$rows=$stmt->fetchAll();
             $headers=['Nama','NIK (disamarkan)','Jenis kelamin','Status','Dusun','RW','RT','Tanggal input'];
         } else {
-            $sql="SELECT f.id,d.name AS dusun_name,rw.number_code AS rw_code,rt.number_code AS rt_code,f.status,COUNT(r.id) AS jumlah_anggota,f.created_at FROM family_records f JOIN rt_units rt ON rt.id=f.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id LEFT JOIN residents r ON r.family_id=f.id".$where." GROUP BY f.id,d.name,rw.number_code,rt.number_code,f.status,f.created_at ORDER BY d.name,rw.number_code,rt.number_code,f.id";
+            if($statusFilter!=='' && !in_array($statusFilter,$allowedFamily,true)) { http_response_code(400); exit('Status keluarga tidak valid.'); }
+            if($statusFilter!=='') { $whereParts[]='f.status=?';$params[]=$statusFilter; }
+            if($dateFrom) {$whereParts[]='f.created_at >= ?';$params[]=$dateFrom.' 00:00:00';}
+            if($dateTo) {$whereParts[]='f.created_at < DATE_ADD(?, INTERVAL 1 DAY)';$params[]=$dateTo.' 00:00:00';}
+            $sql="SELECT f.id,d.name AS dusun_name,rw.number_code AS rw_code,rt.number_code AS rt_code,f.status,COUNT(r.id) AS jumlah_anggota,f.created_at FROM family_records f JOIN rt_units rt ON rt.id=f.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id LEFT JOIN residents r ON r.family_id=f.id".($whereParts?' WHERE '.implode(' AND ',$whereParts):'')." GROUP BY f.id,d.name,rw.number_code,rt.number_code,f.status,f.created_at ORDER BY d.name,rw.number_code,rt.number_code,f.id";
             $stmt=$pdo->prepare($sql);$stmt->execute($params);$rows=$stmt->fetchAll();
             $headers=['ID internal keluarga','Dusun','RW','RT','Status','Jumlah anggota','Tanggal input'];
         }
     } elseif(in_array($kind,['requests','complaints'],true)) {
         if(!in_array($role,['petugas','admin_desa','kepala_desa'],true)) { http_response_code(403); exit('Ekspor surat/pengaduan hanya untuk petugas berwenang.'); }
+        $whereParts=[];$params=[];
+        if($dateFrom) {$whereParts[]='created_at >= ?';$params[]=$dateFrom.' 00:00:00';}
+        if($dateTo) {$whereParts[]='created_at < DATE_ADD(?, INTERVAL 1 DAY)';$params[]=$dateTo.' 00:00:00';}
         if($kind==='requests') {
-            $rows=$pdo->query('SELECT sr.tracking_code,st.name AS service_name,sr.subject,sr.status,sr.public_status_note,sr.created_at,sr.updated_at FROM service_requests sr JOIN service_types st ON st.id=sr.service_type_id ORDER BY sr.created_at DESC')->fetchAll();
+            if($statusFilter!=='' && !in_array($statusFilter,$allowedRequest,true)) { http_response_code(400); exit('Status pengajuan tidak valid.'); }
+            if($statusFilter!=='') {$whereParts[]='sr.status=?';$params[]=$statusFilter;}
+            // Qualify all date fields to avoid ambiguity in joins.
+            $dateParts=[];$dateParams=[];
+            if($dateFrom) {$dateParts[]='sr.created_at >= ?';$dateParams[]=$dateFrom.' 00:00:00';}
+            if($dateTo) {$dateParts[]='sr.created_at < DATE_ADD(?, INTERVAL 1 DAY)';$dateParams[]=$dateTo.' 00:00:00';}
+            $whereParts=$dateParts;$params=$dateParams;
+            if($statusFilter!=='') {$whereParts[]='sr.status=?';$params[]=$statusFilter;}
+            $sql='SELECT sr.tracking_code,st.name AS service_name,sr.subject,sr.status,sr.public_status_note,sr.created_at,sr.updated_at FROM service_requests sr JOIN service_types st ON st.id=sr.service_type_id'.($whereParts?' WHERE '.implode(' AND ',$whereParts):'').' ORDER BY sr.created_at DESC';
+            $stmt=$pdo->prepare($sql);$stmt->execute($params);$rows=$stmt->fetchAll();
             $headers=['Kode pelacakan','Jenis layanan','Subjek','Status','Catatan publik','Dibuat','Diperbarui'];
         } else {
-            $rows=$pdo->query('SELECT tracking_code,title,category,status,public_response,created_at,updated_at FROM complaints ORDER BY created_at DESC')->fetchAll();
+            if($statusFilter!=='' && !in_array($statusFilter,$allowedComplaint,true)) { http_response_code(400); exit('Status pengaduan tidak valid.'); }
+            $dateParts=[];$dateParams=[];
+            if($dateFrom) {$dateParts[]='c.created_at >= ?';$dateParams[]=$dateFrom.' 00:00:00';}
+            if($dateTo) {$dateParts[]='c.created_at < DATE_ADD(?, INTERVAL 1 DAY)';$dateParams[]=$dateTo.' 00:00:00';}
+            if($statusFilter!=='') {$dateParts[]='c.status=?';$dateParams[]=$statusFilter;}
+            $sql='SELECT c.tracking_code,c.title,c.category,c.status,c.public_response,c.created_at,c.updated_at FROM complaints c'.($dateParts?' WHERE '.implode(' AND ',$dateParts):'').' ORDER BY c.created_at DESC';
+            $stmt=$pdo->prepare($sql);$stmt->execute($dateParams);$rows=$stmt->fetchAll();
             $headers=['Kode pelacakan','Judul','Kategori','Status','Tanggapan publik','Dibuat','Diperbarui'];
         }
     } else { http_response_code(400); exit('Jenis ekspor tidak dikenali.'); }
 
-    module_audit_actor($user,'export','report_'.$kind,null,null,['kind'=>$kind,'row_count'=>count($rows),'reason'=>$reason]);
+    module_audit_actor($user,'export','report_'.$kind,null,null,['kind'=>$kind,'row_count'=>count($rows),'reason'=>$reason,'date_from'=>$dateFrom,'date_to'=>$dateTo,'status'=>$statusFilter]);
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="desa-digital-'.$kind.'-'.date('Ymd-His').'.csv"');
     header('Cache-Control: private, no-store, max-age=0');
     $out=fopen('php://output','wb');
-    fwrite($out,"\xEF\xBB\xBF");
-    fputcsv($out,$headers,';','"','\\');
+    fwrite($out,"\\xEF\\xBB\\xBF");
+    fputcsv($out,$headers,';','"','\\\\');
     foreach($rows as $row) {
         $line=[];
         foreach(array_values($row) as $value) {
@@ -744,7 +790,7 @@ function module_serve_export(): void {
             else $value=(string)$value;
             $line[]=module_csv_safe($value);
         }
-        fputcsv($out,$line,';','"','\\');
+        fputcsv($out,$line,';','"','\\\\');
     }
     fclose($out);
     exit;
