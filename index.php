@@ -272,16 +272,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $serviceId = filter_input(INPUT_POST, 'service_type_id', FILTER_VALIDATE_INT);
             $subject = trim((string)($_POST['subject'] ?? ''));
             $details = trim((string)($_POST['details'] ?? ''));
+            $uploads = normalize_private_uploads('attachments', 5);
             if (!$serviceId || mb_strlen($subject) < 4 || mb_strlen($subject) > 190) throw new RuntimeException('Pilih layanan dan isi keperluan dengan benar.');
             if (mb_strlen($details) > 4000) throw new RuntimeException('Keterangan terlalu panjang.');
             $check = $pdo->prepare('SELECT id FROM service_types WHERE id=? AND is_published=1');
             $check->execute([$serviceId]);
             if (!$check->fetch()) throw new RuntimeException('Jenis layanan tidak tersedia.');
             $code = tracking_code('SR');
-            $stmt = $pdo->prepare('INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,?,\'submitted\')');
-            $stmt->execute([$code,$serviceId,(int)$user['id'],$subject,json_encode(['details'=>$details], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
-            audit_log((int)$user['id'], 'create', 'service_requests', (string)$pdo->lastInsertId(), null, ['tracking_code'=>$code]);
-            flash('Pengajuan terkirim. Simpan kode pelacakan ' . $code . '.');
+            $storedKeys = [];
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare('INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,?,\'submitted\')');
+                $stmt->execute([$code,$serviceId,(int)$user['id'],$subject,json_encode(['details'=>$details], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+                $requestId = (int)$pdo->lastInsertId();
+                $storedKeys = save_service_request_files($pdo, $requestId, (int)$user['id'], $uploads);
+                audit_log((int)$user['id'], 'create', 'service_requests', (string)$requestId, null, ['tracking_code'=>$code,'attachment_count'=>count($storedKeys)]);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                foreach ($storedKeys as $key) {
+                    $path = __DIR__ . '/storage/uploads/' . $key;
+                    if (is_file($path)) @unlink($path);
+                }
+                throw $e;
+            }
+            flash('Pengajuan terkirim. Simpan kode pelacakan ' . $code . ($storedKeys ? ' Lampiran berhasil disimpan secara privat.' : '') . '.');
             redirect_to('dashboard');
         } elseif ($action === 'revise_service') {
             $user = require_login();
@@ -289,15 +304,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
             $subject = trim((string)($_POST['subject'] ?? ''));
             $details = trim((string)($_POST['details'] ?? ''));
+            $uploads = normalize_private_uploads('attachments', 5);
             $stmt = $pdo->prepare("SELECT id,status,request_data FROM service_requests WHERE id=? AND applicant_id=? LIMIT 1");
             $stmt->execute([$id,(int)$user['id']]);
             $row = $stmt->fetch();
             if (!$row || $row['status'] !== 'revision_requested') throw new RuntimeException('Pengajuan tidak sedang menunggu revisi.');
             if (mb_strlen($subject) < 4 || mb_strlen($subject) > 190 || mb_strlen($details) > 4000) throw new RuntimeException('Data revisi tidak valid.');
-            $stmt = $pdo->prepare("UPDATE service_requests SET subject=?, request_data=?, status='submitted', public_status_note='Revisi telah dikirim dan menunggu pemeriksaan baru.' WHERE id=? AND applicant_id=? AND status='revision_requested'");
-            $stmt->execute([$subject,json_encode(['details'=>$details], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),(int)$id,(int)$user['id']]);
-            audit_log((int)$user['id'], 'revise', 'service_requests', (string)$id);
-            flash('Revisi dikirim pada nomor pengajuan yang sama.');
+            $storedKeys = [];
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare("UPDATE service_requests SET subject=?, request_data=?, status='submitted', public_status_note='Revisi telah dikirim dan menunggu pemeriksaan baru.' WHERE id=? AND applicant_id=? AND status='revision_requested'");
+                $stmt->execute([$subject,json_encode(['details'=>$details], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),(int)$id,(int)$user['id']]);
+                if ($stmt->rowCount() !== 1) throw new RuntimeException('Status pengajuan berubah. Muat ulang halaman sebelum mengirim revisi.');
+                $storedKeys = save_service_request_files($pdo, (int)$id, (int)$user['id'], $uploads);
+                audit_log((int)$user['id'], 'revise', 'service_requests', (string)$id, null, ['attachment_count'=>count($storedKeys)]);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                foreach ($storedKeys as $key) {
+                    $path = __DIR__ . '/storage/uploads/' . $key;
+                    if (is_file($path)) @unlink($path);
+                }
+                throw $e;
+            }
+            flash('Revisi dikirim pada nomor pengajuan yang sama.' . ($storedKeys ? ' Lampiran tambahan tersimpan secara privat.' : ''));
             redirect_to('dashboard');
         } elseif ($action === 'submit_complaint') {
             $user = require_login();
