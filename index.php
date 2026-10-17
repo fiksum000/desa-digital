@@ -598,7 +598,8 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
   <meta name="theme-color" content="#075b46">
   <meta name="description" content="<?= e(site_val('meta_description','Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.')) ?>">
   <title><?= e($title) ?> · <?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></title>
-  <link rel="stylesheet" href="assets/style.css?v=2">
+  <script>try{const savedTheme=localStorage.getItem('desa-theme');if(savedTheme==='dark'||savedTheme==='light')document.documentElement.dataset.theme=savedTheme;}catch{}</script>
+  <link rel="stylesheet" href="assets/style.css?v=3">
 </head>
 <body>
 <header class="site-header">
@@ -625,6 +626,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
   <div class="header-actions">
     <a class="icon-button search-link" href="<?= e(app_url('berita')) ?>" aria-label="<?= e(site_val('nav_search_aria','Cari berita')) ?>">⌕</a>
     <button class="icon-button mobile-menu-toggle" type="button" aria-label="<?= e(site_val('nav_open_menu_aria','Buka menu tambahan')) ?>" data-open-label="<?= e(site_val('nav_open_menu_aria','Buka menu tambahan')) ?>" data-close-label="<?= e(site_val('nav_close_menu_aria','Tutup menu tambahan')) ?>" aria-expanded="false" aria-controls="mobile-drawer">☰</button>
+    <button class="icon-button theme-toggle" type="button" aria-label="Aktifkan mode gelap" title="Aktifkan mode gelap" aria-pressed="false"><span aria-hidden="true">☾</span></button>
     <?php if ($viewer): ?>
       <a class="login-button" href="<?= e(app_url('dashboard')) ?>">♙ <span><?= e($viewer['full_name']) ?></span></a>
     <?php else: ?>

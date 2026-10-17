@@ -1,4 +1,28 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const themeToggle = document.querySelector('.theme-toggle');
+  const applyTheme = (theme, persist = false) => {
+    const selectedTheme = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.dataset.theme = selectedTheme;
+    if (themeToggle) {
+      const nextLabel = selectedTheme === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap';
+      themeToggle.setAttribute('aria-label', nextLabel);
+      themeToggle.setAttribute('title', nextLabel);
+      themeToggle.setAttribute('aria-pressed', selectedTheme === 'dark' ? 'true' : 'false');
+      const icon = themeToggle.querySelector('span');
+      if (icon) icon.textContent = selectedTheme === 'dark' ? '☀' : '☾';
+    }
+    if (persist) {
+      try { localStorage.setItem('desa-theme', selectedTheme); } catch {}
+    }
+  };
+  const initialTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+  applyTheme(initialTheme);
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
+    });
+  }
+
   const trackInputs = document.querySelectorAll('input[name="code"]');
   trackInputs.forEach((input) => {
     input.addEventListener('input', () => {
