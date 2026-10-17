@@ -1,0 +1,433 @@
+<?php
+declare(strict_types=1);
+require __DIR__ . '/app/bootstrap.php';
+
+$page = is_string($_GET['page'] ?? null) ? $_GET['page'] : 'home';
+$viewer = current_user();
+$dbAvailable = true;
+$services = [];
+$news = [];
+$tracking = null;
+$article = null;
+$requests = [];
+$complaints = [];
+$adminRequests = [];
+$adminComplaints = [];
+$adminNews = [];
+$stats = ['residents' => null, 'families' => null, 'dusun' => null];
+
+function status_text(string $status): string {
+    return [
+        'submitted'=>'Diajukan','in_review'=>'Sedang diperiksa','revision_requested'=>'Perlu perbaikan',
+        'approved'=>'Disetujui','rejected'=>'Ditolak','ready'=>'Siap diambil','completed'=>'Selesai',
+        'cancelled'=>'Dibatalkan','received'=>'Diterima','in_progress'=>'Ditindaklanjuti',
+        'waiting_reporter'=>'Menunggu keterangan','resolved'=>'Tuntas','published'=>'Terbit','draft'=>'Draf',
+        'archived'=>'Arsip'
+    ][$status] ?? ucfirst(str_replace('_',' ',$status));
+}
+function status_class(string $status): string {
+    return in_array($status, ['approved','completed','resolved','published','ready'], true) ? 'good'
+      : (in_array($status, ['rejected','cancelled','archived'], true) ? 'bad'
+      : (in_array($status, ['revision_requested','waiting_reporter'], true) ? 'warn' : 'neutral'));
+}
+function safe_slug(string $value): string {
+    $value = strtolower(trim($value));
+    $value = preg_replace('/[^a-z0-9]+/i', '-', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value);
+    return trim(substr((string)$value, 0, 220), '-') ?: 'berita-' . bin2hex(random_bytes(3));
+}
+function upload_public_image(string $field): ?string {
+    if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
+    $file = $_FILES[$field];
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || (int)$file['size'] > 5 * 1024 * 1024) {
+        throw new RuntimeException('Gambar gagal diunggah atau melebihi 5 MB.');
+    }
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($file['tmp_name']);
+    $extensions = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];
+    if (!isset($extensions[$mime])) throw new RuntimeException('Format gambar harus JPG, PNG, atau WebP.');
+    $dir = __DIR__ . '/assets/uploads';
+    if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) throw new RuntimeException('Penyimpanan gambar tidak tersedia.');
+    $name = bin2hex(random_bytes(18)) . '.' . $extensions[$mime];
+    if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $name)) throw new RuntimeException('Gagal menyimpan gambar.');
+    return 'assets/uploads/' . $name;
+}
+
+try {
+    $pdo = db();
+    $services = $pdo->query('SELECT id, name, slug, description, requirements, estimated_days FROM service_types WHERE is_published=1 ORDER BY sort_order, name')->fetchAll();
+    $news = $pdo->query("SELECT id,title,slug,category,excerpt,body,image_key,alt_text,publish_at,created_at FROM news_posts WHERE status='published' AND (publish_at IS NULL OR publish_at<=NOW()) AND (expire_at IS NULL OR expire_at>NOW()) ORDER BY COALESCE(publish_at,created_at) DESC LIMIT 6")->fetchAll();
+    $stats['residents'] = (int)$pdo->query("SELECT COUNT(*) FROM residents WHERE resident_status='active'")->fetchColumn();
+    $stats['families'] = (int)$pdo->query("SELECT COUNT(*) FROM family_records WHERE status='active'")->fetchColumn();
+    $stats['dusun'] = (int)$pdo->query("SELECT COUNT(*) FROM dusun WHERE is_active=1")->fetchColumn();
+} catch (Throwable $exception) {
+    $dbAvailable = false;
+    error_log('DESA DIGITAL database unavailable.');
+    $services = [
+        ['id'=>0,'name'=>'Layanan Surat','slug'=>'layanan-surat','description'=>'Ajukan surat keterangan dengan mudah dan cepat.','requirements'=>null,'estimated_days'=>null],
+        ['id'=>0,'name'=>'Pengaduan Warga','slug'=>'pengaduan-warga','description'=>'Sampaikan aspirasi, keluhan, atau laporan Anda.','requirements'=>null,'estimated_days'=>null],
+        ['id'=>0,'name'=>'Informasi Desa','slug'=>'informasi-desa','description'=>'Akses informasi program, kegiatan, dan data desa.','requirements'=>null,'estimated_days'=>null],
+    ];
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    verify_csrf();
+    $action = is_string($_POST['action'] ?? null) ? $_POST['action'] : '';
+    try {
+        $pdo = db();
+        if ($action === 'register') {
+            $name = trim((string)($_POST['full_name'] ?? ''));
+            $username = strtolower(trim((string)($_POST['username'] ?? '')));
+            $email = trim((string)($_POST['email'] ?? ''));
+            $password = (string)($_POST['password'] ?? '');
+            if (mb_strlen($name) < 3 || mb_strlen($name) > 160) throw new RuntimeException('Nama harus terdiri dari 3–160 karakter.');
+            if (!preg_match('/^[a-z0-9._-]{4,80}$/', $username)) throw new RuntimeException('Username harus 4–80 karakter dan hanya berisi huruf, angka, titik, garis bawah, atau tanda hubung.');
+            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Format email tidak valid.');
+            if (strlen($password) < 12) throw new RuntimeException('Kata sandi minimal 12 karakter.');
+            $stmt = $pdo->prepare("INSERT INTO app_users (username,email,full_name,password_hash,role) VALUES (?,?,?,?,'warga')");
+            $stmt->execute([$username, $email !== '' ? $email : null, $name, password_hash($password, PASSWORD_DEFAULT)]);
+            audit_log((int)$pdo->lastInsertId(), 'register', 'app_users', (string)$pdo->lastInsertId());
+            flash('Akun warga berhasil dibuat. Silakan masuk.');
+            redirect_to('login');
+        } elseif ($action === 'login') {
+            $now = time();
+            if (!isset($_SESSION['login_window']) || $now - (int)$_SESSION['login_window'] > 600) {
+                $_SESSION['login_window'] = $now; $_SESSION['login_failures'] = 0;
+            }
+            if ((int)($_SESSION['login_failures'] ?? 0) >= 5) throw new RuntimeException('Terlalu banyak percobaan. Tunggu 10 menit lalu coba kembali.');
+            $username = strtolower(trim((string)($_POST['username'] ?? '')));
+            $password = (string)($_POST['password'] ?? '');
+            $stmt = $pdo->prepare('SELECT id,username,full_name,password_hash,role,rt_id,rw_id,is_active,must_change_password FROM app_users WHERE username=? LIMIT 1');
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+            if (!$user || !(int)$user['is_active'] || !password_verify($password, $user['password_hash'])) {
+                $_SESSION['login_failures'] = (int)($_SESSION['login_failures'] ?? 0) + 1;
+                usleep(250000);
+                throw new RuntimeException('Username atau kata sandi tidak cocok.');
+            }
+            session_regenerate_id(true);
+            unset($user['password_hash'], $user['is_active']);
+            $_SESSION['user'] = $user;
+            $_SESSION['login_failures'] = 0;
+            $pdo->prepare('UPDATE app_users SET last_login_at=NOW() WHERE id=?')->execute([(int)$user['id']]);
+            audit_log((int)$user['id'], 'login', 'app_users', (string)$user['id']);
+            redirect_to('dashboard');
+        } elseif ($action === 'logout') {
+            $user = current_user();
+            if ($user) audit_log((int)$user['id'], 'logout', 'app_users', (string)$user['id']);
+            $_SESSION = [];
+            if (ini_get('session.use_cookies')) {
+                $params = session_get_cookie_params();
+                setcookie(session_name(), '', ['expires'=>time()-42000,'path'=>$params['path'],'secure'=>$params['secure'],'httponly'=>$params['httponly'],'samesite'=>'Lax']);
+            }
+            session_destroy();
+            redirect_to('home');
+        } elseif ($action === 'apply_service') {
+            $user = require_login();
+            if (($user['role'] ?? '') !== 'warga') throw new RuntimeException('Pengajuan online tersedia untuk akun warga.');
+            $serviceId = filter_input(INPUT_POST, 'service_type_id', FILTER_VALIDATE_INT);
+            $subject = trim((string)($_POST['subject'] ?? ''));
+            $details = trim((string)($_POST['details'] ?? ''));
+            if (!$serviceId || mb_strlen($subject) < 4 || mb_strlen($subject) > 190) throw new RuntimeException('Pilih layanan dan isi keperluan dengan benar.');
+            if (mb_strlen($details) > 4000) throw new RuntimeException('Keterangan terlalu panjang.');
+            $check = $pdo->prepare('SELECT id FROM service_types WHERE id=? AND is_published=1');
+            $check->execute([$serviceId]);
+            if (!$check->fetch()) throw new RuntimeException('Jenis layanan tidak tersedia.');
+            $code = tracking_code('SR');
+            $stmt = $pdo->prepare('INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,?,\'submitted\')');
+            $stmt->execute([$code,$serviceId,(int)$user['id'],$subject,json_encode(['details'=>$details], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]);
+            audit_log((int)$user['id'], 'create', 'service_requests', (string)$pdo->lastInsertId(), null, ['tracking_code'=>$code]);
+            flash('Pengajuan terkirim. Simpan kode pelacakan ' . $code . '.');
+            redirect_to('dashboard');
+        } elseif ($action === 'revise_service') {
+            $user = require_login();
+            if (($user['role'] ?? '') !== 'warga') throw new RuntimeException('Akses tidak diizinkan.');
+            $id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
+            $subject = trim((string)($_POST['subject'] ?? ''));
+            $details = trim((string)($_POST['details'] ?? ''));
+            $stmt = $pdo->prepare("SELECT id,status,request_data FROM service_requests WHERE id=? AND applicant_id=? LIMIT 1");
+            $stmt->execute([$id,(int)$user['id']]);
+            $row = $stmt->fetch();
+            if (!$row || $row['status'] !== 'revision_requested') throw new RuntimeException('Pengajuan tidak sedang menunggu revisi.');
+            if (mb_strlen($subject) < 4 || mb_strlen($subject) > 190 || mb_strlen($details) > 4000) throw new RuntimeException('Data revisi tidak valid.');
+            $stmt = $pdo->prepare("UPDATE service_requests SET subject=?, request_data=?, status='submitted', public_status_note='Revisi telah dikirim dan menunggu pemeriksaan baru.' WHERE id=? AND applicant_id=? AND status='revision_requested'");
+            $stmt->execute([$subject,json_encode(['details'=>$details], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),(int)$id,(int)$user['id']]);
+            audit_log((int)$user['id'], 'revise', 'service_requests', (string)$id);
+            flash('Revisi dikirim pada nomor pengajuan yang sama.');
+            redirect_to('dashboard');
+        } elseif ($action === 'submit_complaint') {
+            $user = require_login();
+            if (($user['role'] ?? '') !== 'warga') throw new RuntimeException('Pengaduan online tersedia untuk akun warga.');
+            $title = trim((string)($_POST['title'] ?? ''));
+            $category = trim((string)($_POST['category'] ?? 'umum'));
+            $description = trim((string)($_POST['description'] ?? ''));
+            if (mb_strlen($title) < 5 || mb_strlen($title) > 190 || mb_strlen($description) < 10 || mb_strlen($description) > 5000) throw new RuntimeException('Judul dan keterangan pengaduan belum memenuhi ketentuan.');
+            $code = tracking_code('PG');
+            $stmt = $pdo->prepare("INSERT INTO complaints (tracking_code,reporter_id,title,category,description,status) VALUES (?,?,?,?,?,'received')");
+            $stmt->execute([$code,(int)$user['id'],$title,$category,$description]);
+            audit_log((int)$user['id'], 'create', 'complaints', (string)$pdo->lastInsertId(), null, ['tracking_code'=>$code]);
+            flash('Pengaduan diterima. Simpan kode pelacakan ' . $code . '.');
+            redirect_to('dashboard');
+        } elseif ($action === 'set_request_status') {
+            $user = require_roles(['petugas','admin_desa','kepala_desa']);
+            $id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
+            $newStatus = (string)($_POST['status'] ?? '');
+            $publicNote = trim((string)($_POST['public_status_note'] ?? ''));
+            $internalNote = trim((string)($_POST['internal_note'] ?? ''));
+            $allowed = ['in_review','revision_requested','approved','rejected','ready','completed'];
+            if (!$id || !in_array($newStatus, $allowed, true)) throw new RuntimeException('Status pengajuan tidak valid.');
+            if (in_array($newStatus, ['approved','rejected','ready','completed'], true) && !in_array($user['role'], ['admin_desa','kepala_desa'], true)) {
+                throw new RuntimeException('Persetujuan/keputusan akhir harus dilakukan admin desa atau kepala desa.');
+            }
+            $stmt = $pdo->prepare('SELECT id,status FROM service_requests WHERE id=?');
+            $stmt->execute([$id]); $before = $stmt->fetch();
+            if (!$before) throw new RuntimeException('Pengajuan tidak ditemukan.');
+            if (in_array($before['status'], ['completed','cancelled','rejected'], true)) throw new RuntimeException('Pengajuan sudah ditutup dan tidak dapat diubah langsung.');
+            $stmt = $pdo->prepare('UPDATE service_requests SET status=?,public_status_note=?,internal_note=?,assigned_to=?,approved_by=CASE WHEN ? IN (\'approved\',\'rejected\') THEN ? ELSE approved_by END,approved_at=CASE WHEN ? IN (\'approved\',\'rejected\') THEN NOW() ELSE approved_at END,completed_at=CASE WHEN ?=\'completed\' THEN NOW() ELSE completed_at END WHERE id=?');
+            $stmt->execute([$newStatus,mb_substr($publicNote,0,500),mb_substr($internalNote,0,4000),(int)$user['id'],$newStatus,(int)$user['id'],$newStatus,$newStatus,(int)$id]);
+            audit_log((int)$user['id'], 'status_change', 'service_requests', (string)$id, ['status'=>$before['status']], ['status'=>$newStatus]);
+            flash('Status pengajuan diperbarui.');
+            redirect_to('admin');
+        } elseif ($action === 'save_news') {
+            $user = require_roles(['petugas','admin_desa']);
+            $title = trim((string)($_POST['title'] ?? ''));
+            $category = (string)($_POST['category'] ?? 'berita');
+            $excerpt = trim((string)($_POST['excerpt'] ?? ''));
+            $body = trim((string)($_POST['body'] ?? ''));
+            $status = (string)($_POST['status'] ?? 'draft');
+            if (mb_strlen($title) < 4 || mb_strlen($title) > 220 || mb_strlen($body) < 10 || mb_strlen($body) > 30000) throw new RuntimeException('Judul atau isi berita belum valid.');
+            if (!in_array($category, ['kegiatan','pengumuman','program','berita'], true) || !in_array($status, ['draft','published'], true)) throw new RuntimeException('Kategori atau status berita tidak valid.');
+            $imageKey = upload_public_image('image');
+            $slug = safe_slug($title) . '-' . bin2hex(random_bytes(3));
+            $stmt = $pdo->prepare('INSERT INTO news_posts (title,slug,category,excerpt,body,image_key,alt_text,status,publish_at,author_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
+            $stmt->execute([$title,$slug,$category,mb_substr($excerpt,0,500),$body,$imageKey,trim((string)($_POST['alt_text'] ?? '')) ?: $title,$status,$status === 'published' ? date('Y-m-d H:i:s') : null,(int)$user['id']]);
+            audit_log((int)$user['id'], 'create', 'news_posts', (string)$pdo->lastInsertId(), null, ['title'=>$title,'status'=>$status]);
+            flash($status === 'published' ? 'Berita berhasil diterbitkan.' : 'Berita disimpan sebagai draf.');
+            redirect_to('admin');
+        } elseif ($action === 'set_news_status') {
+            $user = require_roles(['petugas','admin_desa']);
+            $id = filter_input(INPUT_POST, 'news_id', FILTER_VALIDATE_INT);
+            $status = (string)($_POST['status'] ?? '');
+            if (!$id || !in_array($status, ['published','draft','archived'], true)) throw new RuntimeException('Status berita tidak valid.');
+            $pdo->prepare('UPDATE news_posts SET status=?,publish_at=CASE WHEN ?=\'published\' AND publish_at IS NULL THEN NOW() ELSE publish_at END WHERE id=?')->execute([$status,$status,$id]);
+            audit_log((int)$user['id'], 'status_change', 'news_posts', (string)$id, null, ['status'=>$status]);
+            flash('Status berita diperbarui.');
+            redirect_to('admin');
+        } else {
+            throw new RuntimeException('Aksi tidak dikenali.');
+        }
+    } catch (Throwable $exception) {
+        if ($exception instanceof PDOException) {
+            error_log('DESA DIGITAL database operation failed.');
+            $message = 'Data belum dapat disimpan. Periksa isian atau hubungi admin desa.';
+        } else {
+            $message = $exception->getMessage();
+        }
+        flash($message, 'error');
+        $fallbackPage = $action === 'login' ? 'login' : ($action === 'register' ? 'register' : ($action === 'save_news' ? 'admin' : ($action === 'submit_complaint' ? 'pengaduan' : ($action === 'apply_service' ? 'layanan' : 'dashboard'))));
+        redirect_to($fallbackPage);
+    }
+}
+
+try {
+    $pdo = db();
+    if ($page === 'track' && isset($_GET['code'])) {
+        $code = strtoupper(trim((string)$_GET['code']));
+        if (preg_match('/^[A-Z0-9-]{5,32}$/', $code)) {
+            $stmt = $pdo->prepare('SELECT tracking_code,subject AS title,status,public_status_note AS public_note,created_at,updated_at,\'service\' AS item_type FROM service_requests WHERE tracking_code=? UNION ALL SELECT tracking_code,title,status,public_response,created_at,updated_at,\'complaint\' AS item_type FROM complaints WHERE tracking_code=? LIMIT 1');
+            $stmt->execute([$code,$code]); $tracking = $stmt->fetch() ?: null;
+        }
+    }
+    if ($page === 'article') {
+        $slug = trim((string)($_GET['slug'] ?? ''));
+        $stmt = $pdo->prepare("SELECT * FROM news_posts WHERE slug=? AND status='published' AND (publish_at IS NULL OR publish_at<=NOW()) AND (expire_at IS NULL OR expire_at>NOW()) LIMIT 1");
+        $stmt->execute([$slug]); $article = $stmt->fetch() ?: null;
+    }
+    if ($page === 'dashboard' && $viewer) {
+        $stmt = $pdo->prepare('SELECT sr.*, st.name AS service_name FROM service_requests sr JOIN service_types st ON st.id=sr.service_type_id WHERE sr.applicant_id=? ORDER BY sr.created_at DESC LIMIT 50');
+        $stmt->execute([(int)$viewer['id']]); $requests = $stmt->fetchAll();
+        $stmt = $pdo->prepare('SELECT * FROM complaints WHERE reporter_id=? ORDER BY created_at DESC LIMIT 50');
+        $stmt->execute([(int)$viewer['id']]); $complaints = $stmt->fetchAll();
+    }
+    if ($page === 'admin' && $viewer && in_array($viewer['role'], ['petugas','admin_desa','kepala_desa'], true)) {
+        $adminRequests = $pdo->query('SELECT sr.*,u.full_name AS applicant_name,st.name AS service_name FROM service_requests sr JOIN app_users u ON u.id=sr.applicant_id JOIN service_types st ON st.id=sr.service_type_id ORDER BY FIELD(sr.status,\'submitted\',\'in_review\',\'revision_requested\',\'approved\',\'ready\',\'completed\'),sr.created_at DESC LIMIT 100')->fetchAll();
+        $adminComplaints = $pdo->query('SELECT c.*,u.full_name AS reporter_name FROM complaints c JOIN app_users u ON u.id=c.reporter_id ORDER BY c.created_at DESC LIMIT 50')->fetchAll();
+        $adminNews = $pdo->query('SELECT id,title,status,category,created_at FROM news_posts ORDER BY created_at DESC LIMIT 30')->fetchAll();
+    }
+} catch (Throwable $exception) {
+    $dbAvailable = false;
+    error_log('DESA DIGITAL could not load requested data.');
+}
+
+$flashMessage = take_flash();
+$pageTitles = ['home'=>'Beranda','layanan'=>'Layanan Desa','pengaduan'=>'Pengaduan Warga','track'=>'Lacak Pengajuan','berita'=>'Berita & Pengumuman','article'=>'Berita','profil'=>'Profil Desa','login'=>'Masuk','register'=>'Daftar Akun','dashboard'=>'Dashboard Saya','admin'=>'Panel Pengelolaan'];
+$title = $pageTitles[$page] ?? 'DESA DIGITAL';
+?>
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#075b46">
+  <meta name="description" content="Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.">
+  <title><?= e($title) ?> · DESA DIGITAL</title>
+  <link rel="stylesheet" href="assets/style.css?v=1">
+</head>
+<body>
+<header class="site-header">
+  <a class="brand" href="<?= e(app_url('home')) ?>" aria-label="DESA DIGITAL - Beranda">
+    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M5 31 27 4h9L14 36H5z" fill="#77b84a"/><path d="M31 4h5v14c0 10-7 18-18 18h-4z" fill="#07634e"/><path d="M5 31 27 4" stroke="#e8f4d7" stroke-width="1.3"/></svg></span>
+    <span><strong>DESA</strong> DIGITAL</span>
+  </a>
+  <nav class="main-nav" aria-label="Navigasi utama">
+    <a class="<?= $page==='home'?'active':'' ?>" href="<?= e(app_url('home')) ?>">Beranda</a>
+    <a class="<?= $page==='layanan'?'active':'' ?>" href="<?= e(app_url('layanan')) ?>">Layanan Desa</a>
+    <a class="<?= in_array($page,['berita','article'],true)?'active':'' ?>" href="<?= e(app_url('berita')) ?>">Berita & Pengumuman</a>
+    <a class="<?= $page==='pengaduan'?'active':'' ?>" href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a>
+    <a class="<?= $page==='profil'?'active':'' ?>" href="<?= e(app_url('profil')) ?>">Profil Desa</a>
+  </nav>
+  <div class="header-actions">
+    <a class="icon-button search-link" href="<?= e(app_url('berita')) ?>" aria-label="Cari berita">⌕</a>
+    <?php if ($viewer): ?>
+      <a class="login-button" href="<?= e(app_url('dashboard')) ?>">♙ <span><?= e($viewer['full_name']) ?></span></a>
+    <?php else: ?>
+      <a class="login-button" href="<?= e(app_url('login')) ?>">♙ <span>Masuk</span></a>
+    <?php endif; ?>
+  </div>
+</header>
+
+<?php if ($flashMessage): ?>
+  <div class="flash-wrap"><div class="flash <?= e($flashMessage['type'] ?? 'success') ?>"><?= e($flashMessage['message'] ?? '') ?></div></div>
+<?php endif; ?>
+<?php if (!$dbAvailable && !in_array($page,['login','register','home','layanan','berita','profil'],true)): ?>
+  <div class="flash-wrap"><div class="flash error">Database belum siap atau sedang tidak tersedia. Data tidak dihapus; periksa konfigurasi server.</div></div>
+<?php endif; ?>
+
+<main>
+<?php if ($page === 'home'): ?>
+  <section class="hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Pelayanan Publik Desa</span>
+      <h1>Layanan desa,<br>kini <em>lebih dekat</em></h1>
+      <p class="hero-description">Akses berbagai layanan surat, pengaduan, informasi, dan kabar desa dalam satu tempat, dengan mudah, cepat, dan transparan.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="<?= e(app_url('layanan')) ?>"><span class="button-icon">▤</span> Ajukan Surat <span class="arrow">→</span></a>
+        <a class="button button-outline" href="<?= e(app_url('track')) ?>"><span class="button-icon">⌕</span> Lacak Pengajuan <span class="arrow">→</span></a>
+      </div>
+      <div class="benefits">
+        <div><span class="benefit-icon">▣</span><span>Mudah<br>diakses</span></div>
+        <div><span class="benefit-icon">ϟ</span><span>Proses<br>lebih cepat</span></div>
+        <div><span class="benefit-icon">⬟</span><span>Transparan<br>dan terpercaya</span></div>
+        <div><span class="benefit-icon">♟</span><span>untuk<br>Seluruh Warga</span></div>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <img src="assets/village-hero.svg" alt="Ilustrasi lanskap desa, sawah bertingkat, dan pegunungan">
+      <div class="welcome-card"><span class="weather-icon">☀</span><strong>Pagi yang baik,<br>Warga Desa!</strong><p>Bersama membangun desa yang lebih maju dan sejahtera.</p></div>
+      <div class="slider-dots"><span>‹</span><i></i><span>›</span></div>
+    </div>
+  </section>
+
+  <section class="service-strip" aria-label="Layanan utama">
+    <a class="service-card green-card" href="<?= e(app_url('layanan')) ?>"><span class="service-icon">▤</span><h2>Layanan Surat</h2><p>Ajukan berbagai surat keterangan dengan mudah dan cepat.</p><span class="round-arrow">→</span></a>
+    <a class="service-card amber-card" href="<?= e(app_url('pengaduan')) ?>"><span class="service-icon">⚑</span><h2>Pengaduan Warga</h2><p>Sampaikan aspirasi, keluhan, atau laporan Anda.</p><span class="round-arrow">→</span></a>
+    <a class="service-card blue-card" href="<?= e(app_url('profil')) ?>"><span class="service-icon">ⓘ</span><h2>Informasi Desa</h2><p>Akses informasi seputar program, kegiatan, dan data desa.</p><span class="round-arrow">→</span></a>
+    <div class="track-card"><div class="track-heading"><span class="track-icon">◷</span><div><h2>Cek Status Pengajuan</h2><p>Masukkan nomor pengajuan Anda</p></div></div>
+      <form method="get" action="index.php" class="track-form"><input type="hidden" name="page" value="track"><label class="sr-only" for="home-track">Kode pengajuan</label><input id="home-track" name="code" placeholder="Contoh: SR-260101-AB12CD34" required maxlength="32"><button type="submit" aria-label="Cek status">⌕</button></form>
+    </div>
+  </section>
+
+  <section class="news-section">
+    <div class="section-heading"><div><h2>Berita & Pengumuman</h2><p>Informasi terbaru seputar kegiatan, program, dan perkembangan desa.</p></div><a href="<?= e(app_url('berita')) ?>" class="see-all">Lihat Semua <span>→</span></a></div>
+    <?php if ($news): ?>
+      <div class="news-grid">
+      <?php foreach (array_slice($news,0,3) as $item): ?>
+        <article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>">
+          <?php if (!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="assets/village-hero.svg" alt="Ilustrasi desa"><?php endif; ?>
+          <span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a>
+          <div class="news-content"><time><?= e(date('d M Y', strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><a class="news-arrow" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>" aria-label="Baca berita">→</a></div></article>
+      <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <div class="empty-news"><span class="empty-news-icon">▤</span><div><strong>Berita desa akan tampil di sini.</strong><p>Petugas dapat menerbitkan berita dan pengumuman melalui panel pengelolaan.</p></div></div>
+    <?php endif; ?>
+  </section>
+  <section class="stats-band" aria-label="Ringkasan data desa">
+    <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['residents'] === null ? '—' : number_format($stats['residents'],0,',','.') ?></strong><span>Jumlah Penduduk</span></div></div>
+    <div class="stat-item"><span class="stat-icon">⌂</span><div><strong><?= $stats['families'] === null ? '—' : number_format($stats['families'],0,',','.') ?></strong><span>Jumlah KK</span></div></div>
+    <div class="stat-item"><span class="stat-icon">▧</span><div><strong>—</strong><span>Luas Wilayah</span></div></div>
+    <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['dusun'] === null ? '—' : number_format($stats['dusun'],0,',','.') ?></strong><span>Dusun</span></div></div>
+  </section>
+
+<?php elseif ($page === 'layanan'): ?>
+  <section class="page-hero"><span class="eyebrow">Pelayanan Publik</span><h1>Layanan Desa</h1><p>Pilih jenis layanan yang kamu butuhkan. Status pengajuan dapat dipantau dengan kode pelacakan.</p></section>
+  <div class="content-layout">
+    <section class="panel"><h2>Daftar layanan</h2>
+      <?php if ($services): ?><div class="list-cards"><?php foreach ($services as $service): ?><article class="list-card"><span class="service-icon">▤</span><div><h3><?= e($service['name']) ?></h3><p><?= e($service['description'] ?? '') ?></p><?php if (!empty($service['estimated_days'])): ?><small>Estimasi <?= (int)$service['estimated_days'] ?> hari kerja</small><?php endif; ?></div><?php if ($viewer && ($viewer['role'] ?? '')==='warga' && $dbAvailable && (int)$service['id']>0): ?><a class="button button-small button-primary" href="<?= e(app_url('ajukan',['type'=>(int)$service['id']])) ?>">Ajukan</a><?php else: ?><a class="button button-small button-outline" href="<?= e(app_url($viewer?'login':'login')) ?>">Masuk untuk ajukan</a><?php endif; ?></article><?php endforeach; ?></div><?php else: ?><p>Belum ada layanan yang diterbitkan.</p><?php endif; ?>
+    </section>
+    <?php if ($viewer && ($viewer['role'] ?? '')==='warga' && $page==='layanan' && isset($_GET['type'])): ?>
+      <?php $typeId=(int)$_GET['type']; $selected=null; foreach($services as $sv){if((int)$sv['id']===$typeId)$selected=$sv;} ?>
+      <?php if($selected): ?><section class="panel"><h2>Formulir pengajuan</h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="apply_service"><input type="hidden" name="service_type_id" value="<?= (int)$selected['id'] ?>"><label>Jenis layanan<input value="<?= e($selected['name']) ?>" disabled></label><label>Keperluan / subjek<input name="subject" maxlength="190" required></label><label>Keterangan tambahan<textarea name="details" rows="4" maxlength="4000"></textarea></label><button class="button button-primary" type="submit">Kirim pengajuan →</button></form></section><?php endif; ?>
+    <?php endif; ?>
+  </div>
+
+<?php elseif ($page === 'pengaduan'): ?>
+  <section class="page-hero"><span class="eyebrow">Suara Warga</span><h1>Pengaduan Warga</h1><p>Sampaikan aspirasi, keluhan, atau laporan. Data pelapor hanya terlihat oleh pihak yang berwenang.</p></section>
+  <section class="panel narrow-panel"><h2>Kirim pengaduan</h2>
+    <?php if (!$viewer): ?><p>Silakan <a class="text-link" href="<?= e(app_url('login')) ?>">masuk ke akun warga</a> untuk mengirim pengaduan dan melacak tindak lanjutnya.</p>
+    <?php elseif (($viewer['role'] ?? '')!=='warga'): ?><p>Akun ini tidak memiliki akses untuk mengirim pengaduan sebagai warga.</p>
+    <?php else: ?><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="submit_complaint"><label>Judul laporan<input name="title" required maxlength="190"></label><label>Kategori<select name="category"><option value="umum">Umum</option><option value="infrastruktur">Infrastruktur</option><option value="pelayanan">Pelayanan</option><option value="lingkungan">Lingkungan</option><option value="sosial">Sosial</option></select></label><label>Detail laporan<textarea name="description" rows="6" maxlength="5000" required></textarea></label><button class="button button-primary" type="submit">Kirim pengaduan →</button></form><?php endif; ?>
+  </section>
+
+<?php elseif ($page === 'track'): ?>
+  <section class="page-hero"><span class="eyebrow">Transparan & Terpantau</span><h1>Lacak Pengajuan</h1><p>Masukkan kode pelacakan untuk melihat status dan pembaruan yang boleh dibagikan kepada publik.</p></section>
+  <section class="panel narrow-panel"><form method="get" class="track-form large-track"><input type="hidden" name="page" value="track"><label class="sr-only" for="track-code">Kode pelacakan</label><input id="track-code" name="code" placeholder="Contoh: SR-260101-AB12CD34" required maxlength="32" value="<?= e((string)($_GET['code'] ?? '')) ?>"><button type="submit">Periksa</button></form>
+  <?php if (isset($_GET['code'])): ?><?php if ($tracking): ?><div class="tracking-result"><span class="status-pill <?= e(status_class($tracking['status'])) ?>"><?= e(status_text($tracking['status'])) ?></span><h2><?= e($tracking['title']) ?></h2><p class="muted">Kode: <strong><?= e($tracking['tracking_code']) ?></strong></p><p><?= e($tracking['public_note'] ?: 'Belum ada catatan pembaruan untuk ditampilkan.') ?></p><dl class="detail-list"><div><dt>Dikirim</dt><dd><?= e(date('d M Y H:i',strtotime($tracking['created_at']))) ?></dd></div><div><dt>Pembaruan terakhir</dt><dd><?= e(date('d M Y H:i',strtotime($tracking['updated_at']))) ?></dd></div></dl></div><?php else: ?><p class="flash error inline-flash">Kode tidak ditemukan. Periksa kembali kode pada bukti pengajuan.</p><?php endif; ?><?php endif; ?>
+  </section>
+
+<?php elseif ($page === 'berita'): ?>
+  <section class="page-hero"><span class="eyebrow">Kabar Desa</span><h1>Berita & Pengumuman</h1><p>Informasi kegiatan, program, dan pengumuman resmi desa.</p></section>
+  <?php if ($news): ?><div class="news-grid news-grid-wide"><?php foreach($news as $item): ?><article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?php if(!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="assets/village-hero.svg" alt="Ilustrasi desa"><?php endif; ?><span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a><div class="news-content"><time><?= e(date('d M Y',strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><p><?= e($item['excerpt'] ?? '') ?></p></div></article><?php endforeach; ?></div><?php else: ?><div class="empty-news"><div><strong>Belum ada berita yang diterbitkan.</strong><p>Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.</p></div></div><?php endif; ?>
+
+<?php elseif ($page === 'article'): ?>
+  <?php if (!$article): ?><section class="page-hero"><h1>Berita tidak ditemukan</h1><p>Berita mungkin sudah diarsipkan atau alamatnya salah.</p><a class="button button-primary" href="<?= e(app_url('berita')) ?>">Kembali ke berita</a></section>
+  <?php else: ?><article class="article-page"><?php if(!empty($article['image_key'])): ?><img class="article-cover" src="<?= e($article['image_key']) ?>" alt="<?= e($article['alt_text'] ?: $article['title']) ?>"><?php endif; ?><span class="eyebrow"><?= e(strtoupper($article['category'])) ?></span><h1><?= e($article['title']) ?></h1><p class="muted"><?= e(date('d M Y',strtotime($article['publish_at'] ?: $article['created_at']))) ?></p><?php if($article['excerpt']): ?><p class="article-excerpt"><?= e($article['excerpt']) ?></p><?php endif; ?><div class="article-body"><?= nl2br(e($article['body'])) ?></div><a class="text-link" href="<?= e(app_url('berita')) ?>">← Kembali ke berita</a></article><?php endif; ?>
+
+<?php elseif ($page === 'profil'): ?>
+  <section class="page-hero"><span class="eyebrow">Tentang Kami</span><h1>Profil Desa</h1><p>Ruang informasi resmi desa. Identitas, sejarah, struktur pemerintahan, potensi, alamat, dan kontak akan dikelola melalui panel admin.</p></section>
+  <section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2>Profil & sejarah</h2><p>Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.</p></div><div class="panel"><span class="profile-icon">♧</span><h2>Potensi desa</h2><p>UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.</p></div><div class="panel"><span class="profile-icon">✉</span><h2>Kontak kantor</h2><p>Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.</p></div></section>
+
+<?php elseif ($page === 'login'): ?>
+  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Selamat datang kembali</span><h1>Masuk ke<br><em>DESA DIGITAL</em></h1><p>Akses layanan warga atau panel kerja sesuai peran akun kamu.</p><img src="assets/village-hero.svg" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Masuk</h2><p class="muted">Gunakan username dan kata sandi yang terdaftar.</p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label>Username<input name="username" autocomplete="username" required maxlength="80"></label><label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit">Masuk →</button></form><p class="auth-foot">Belum punya akun warga? <a href="<?= e(app_url('register')) ?>">Daftar di sini</a></p></div></section>
+
+<?php elseif ($page === 'register'): ?>
+  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Akun warga</span><h1>Layanan desa,<br><em>lebih dekat.</em></h1><p>Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.</p><img src="assets/village-hero.svg" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Daftar akun warga</h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="register"><label>Nama lengkap<input name="full_name" autocomplete="name" required maxlength="160"></label><label>Username<input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{4,80}" required minlength="4" maxlength="80"></label><label>Email (opsional)<input type="email" name="email" autocomplete="email" maxlength="190"></label><label>Kata sandi<input type="password" name="password" autocomplete="new-password" required minlength="12"><small>Minimal 12 karakter.</small></label><button class="button button-primary button-full" type="submit">Buat akun →</button></form><p class="auth-foot">Sudah punya akun? <a href="<?= e(app_url('login')) ?>">Masuk</a></p></div></section>
+
+<?php elseif ($page === 'dashboard'): ?>
+  <?php if (!$viewer): ?><section class="page-hero"><h1>Dashboard Warga</h1><p>Masuk terlebih dahulu untuk melihat data milik akun.</p><a class="button button-primary" href="<?= e(app_url('login')) ?>">Masuk</a></section>
+  <?php else: ?><section class="page-hero dashboard-hero"><span class="eyebrow"><?= e(role_label($viewer['role'])) ?></span><h1>Halo, <?= e($viewer['full_name']) ?></h1><p>Berikut ringkasan aktivitas dan layanan yang terkait dengan akunmu.</p><?php if(in_array($viewer['role'],['petugas','admin_desa','kepala_desa'],true)): ?><a class="button button-primary" href="<?= e(app_url('admin')) ?>">Buka panel pengelolaan →</a><?php endif; ?></section>
+  <?php if(($viewer['role'] ?? '')==='warga'): ?><section class="panel"><div class="section-heading compact-heading"><div><h2>Pengajuan saya</h2><p>Nomor pelacakan tetap sama selama proses revisi.</p></div><a class="button button-small button-primary" href="<?= e(app_url('layanan')) ?>">Ajukan surat</a></div><?php if($requests): ?><div class="table-wrap"><table><thead><tr><th>Kode</th><th>Layanan</th><th>Status</th><th>Dibuat</th><th>Catatan</th></tr></thead><tbody><?php foreach($requests as $row): ?><tr><td><strong><?= e($row['tracking_code']) ?></strong></td><td><?= e($row['service_name']) ?><small><?= e($row['subject']) ?></small></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?= e(date('d M Y',strtotime($row['created_at']))) ?></td><td><?= e($row['public_status_note'] ?: '—') ?><?php if($row['status']==='revision_requested'): ?><details class="revise-details"><summary>Kirim revisi</summary><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="revise_service"><input type="hidden" name="request_id" value="<?= (int)$row['id'] ?>"><label>Keperluan<input name="subject" value="<?= e($row['subject']) ?>" required maxlength="190"></label><label>Keterangan<textarea name="details" rows="3"><?= e((string)((json_decode($row['request_data'],true)['details'] ?? '') ?: '')) ?></textarea></label><button class="button button-small button-primary" type="submit">Kirim revisi</button></form></details><?php endif; ?></td></tr><?php endforeach; ?></tbody></table></div><?php else: ?><p>Belum ada pengajuan. Pilih jenis surat untuk memulai.</p><?php endif; ?></section>
+  <section class="panel"><div class="section-heading compact-heading"><div><h2>Pengaduan saya</h2><p>Pelacakan pengaduan tanpa menampilkan isi laporan ke publik.</p></div><a class="button button-small button-outline" href="<?= e(app_url('pengaduan')) ?>">Buat pengaduan</a></div><?php if($complaints): ?><div class="table-wrap"><table><thead><tr><th>Kode</th><th>Judul</th><th>Status</th><th>Dibuat</th></tr></thead><tbody><?php foreach($complaints as $row): ?><tr><td><strong><?= e($row['tracking_code']) ?></strong></td><td><?= e($row['title']) ?></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?= e(date('d M Y',strtotime($row['created_at']))) ?></td></tr><?php endforeach; ?></tbody></table></div><?php else: ?><p>Belum ada pengaduan.</p><?php endif; ?></section>
+  <?php else: ?><section class="panel"><h2>Ruang kerja <?= e(role_label($viewer['role'])) ?></h2><p>Hak akses server mengikuti wilayah dan penugasan akun. Menu pendataan RT/RW dan dokumen privat akan diaktifkan sesuai tahap implementasi berikutnya.</p><?php if(in_array($viewer['role'],['rt','rw'],true)): ?><p class="muted">Wilayah tugas: <?= $viewer['rt_id'] ? 'RT terpilih' : ($viewer['rw_id'] ? 'RW terpilih' : 'Belum ditetapkan') ?>. Minta admin desa memeriksa penugasan jika belum benar.</p><?php endif; ?></section><?php endif; ?>
+  <?php endif; ?>
+
+<?php elseif ($page === 'admin'): ?>
+  <?php if (!$viewer || !in_array($viewer['role'],['petugas','admin_desa','kepala_desa'],true)): ?><section class="page-hero"><h1>Akses terbatas</h1><p>Halaman pengelolaan hanya untuk petugas yang memiliki izin.</p><a class="button button-primary" href="<?= e(app_url('login')) ?>">Masuk</a></section>
+  <?php else: ?><section class="page-hero dashboard-hero"><span class="eyebrow">Ruang Kerja</span><h1>Panel Pengelolaan</h1><p>Kelola antrean layanan dan konten publik sesuai kewenangan akun.</p></section>
+  <section class="panel"><div class="section-heading compact-heading"><div><h2>Antrean pengajuan surat</h2><p>Keputusan akhir disediakan hanya untuk admin desa atau kepala desa.</p></div></div><?php if($adminRequests): ?><div class="table-wrap"><table><thead><tr><th>Pengajuan</th><th>Pemohon</th><th>Status</th><th>Diajukan</th><th>Perbarui status</th></tr></thead><tbody><?php foreach($adminRequests as $row): ?><tr><td><strong><?= e($row['tracking_code']) ?></strong><small><?= e($row['service_name']) ?> · <?= e($row['subject']) ?></small></td><td><?= e($row['applicant_name']) ?></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?= e(date('d M Y',strtotime($row['created_at']))) ?></td><td><form method="post" class="status-form"><?= csrf_field() ?><input type="hidden" name="action" value="set_request_status"><input type="hidden" name="request_id" value="<?= (int)$row['id'] ?>"><select name="status" aria-label="Status baru"><?php foreach(['in_review','revision_requested','approved','rejected','ready','completed'] as $st): if(in_array($row['status'],['completed','cancelled','rejected'],true)) continue; ?><option value="<?= e($st) ?>"><?= e(status_text($st)) ?></option><?php endforeach; ?></select><input name="public_status_note" placeholder="Catatan untuk warga" maxlength="500"><input name="internal_note" placeholder="Catatan internal" maxlength="1000"><button class="button button-small button-primary" type="submit">Simpan</button></form></td></tr><?php endforeach; ?></tbody></table></div><?php else: ?><p>Belum ada pengajuan dalam antrean.</p><?php endif; ?></section>
+  <section class="panel"><h2>Berita & pengumuman</h2><p>Berita publik harus memakai foto yang disetujui dan tidak memuat data pribadi warga.</p><?php if(can_manage_content($viewer)): ?><form method="post" enctype="multipart/form-data" class="form-grid"><?= csrf_field() ?><input type="hidden" name="action" value="save_news"><label>Judul berita<input name="title" required maxlength="220"></label><label>Kategori<select name="category"><option value="kegiatan">Kegiatan</option><option value="pengumuman">Pengumuman</option><option value="program">Program</option><option value="berita">Berita</option></select></label><label class="full-span">Ringkasan<input name="excerpt" maxlength="500"></label><label class="full-span">Isi berita<textarea name="body" rows="5" required maxlength="30000"></textarea></label><label>Foto (JPG/PNG/WebP, maks. 5 MB)<input type="file" name="image" accept="image/jpeg,image/png,image/webp"></label><label>Teks alternatif foto<input name="alt_text" maxlength="255"></label><label>Status<select name="status"><option value="draft">Simpan draf</option><option value="published">Terbitkan</option></select></label><div class="full-span"><button class="button button-primary" type="submit">Simpan berita →</button></div></form><?php else: ?><p>Akun kepala desa hanya dapat mengakses fungsi sesuai kewenangan yang ditetapkan.</p><?php endif; ?>
+  <?php if($adminNews): ?><div class="table-wrap admin-news-table"><table><thead><tr><th>Berita</th><th>Status</th><th>Aksi</th></tr></thead><tbody><?php foreach($adminNews as $row): ?><tr><td><?= e($row['title']) ?><small><?= e($row['category']) ?> · <?= e(date('d M Y',strtotime($row['created_at']))) ?></small></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?php if(can_manage_content($viewer)): ?><form method="post" class="inline-form"><?= csrf_field() ?><input type="hidden" name="action" value="set_news_status"><input type="hidden" name="news_id" value="<?= (int)$row['id'] ?>"><select name="status"><option value="published">Terbitkan</option><option value="draft">Jadikan draf</option><option value="archived">Arsipkan</option></select><button class="button button-small button-outline" type="submit">Ubah</button></form><?php endif; ?></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?></section>
+  <section class="panel"><h2>Pengaduan warga</h2><?php if($adminComplaints): ?><div class="table-wrap"><table><thead><tr><th>Kode</th><th>Pelapor</th><th>Judul</th><th>Status</th><th>Waktu</th></tr></thead><tbody><?php foreach($adminComplaints as $row): ?><tr><td><?= e($row['tracking_code']) ?></td><td><?= e($row['reporter_name']) ?></td><td><?= e($row['title']) ?></td><td><span class="status-pill <?= e(status_class($row['status'])) ?>"><?= e(status_text($row['status'])) ?></span></td><td><?= e(date('d M Y',strtotime($row['created_at']))) ?></td></tr><?php endforeach; ?></tbody></table></div><?php else: ?><p>Belum ada pengaduan masuk.</p><?php endif; ?></section>
+  <?php endif; ?>
+
+<?php else: ?>
+  <section class="page-hero"><span class="eyebrow">DESA DIGITAL</span><h1>Halaman tidak ditemukan</h1><p>Alamat yang kamu buka tidak tersedia.</p><a class="button button-primary" href="<?= e(app_url('home')) ?>">Kembali ke beranda</a></section>
+<?php endif; ?>
+</main>
+
+<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true">◆</span><span><strong>DESA</strong> DIGITAL</span></a><p>Layanan desa, kini lebih dekat.<br>Informasi publik dan pelayanan warga dalam satu tempat.</p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('layanan')) ?>">Layanan Surat</a><a href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a><a href="<?= e(app_url('track')) ?>">Lacak Pengajuan</a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> DESA DIGITAL</span><span>Pelayanan publik yang mudah, cepat, dan transparan.</span></div></footer>
+
+<?php if ($viewer): ?><nav class="mobile-bottom-nav" aria-label="Navigasi mobile"><a href="<?= e(app_url('home')) ?>"><span>⌂</span>Beranda</a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span>Layanan</a><a href="<?= e(app_url('berita')) ?>"><span>▦</span>Berita</a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span>Pengaduan</a><a href="<?= e(app_url('dashboard')) ?>"><span>♙</span>Profil</a></nav><?php else: ?><nav class="mobile-bottom-nav" aria-label="Navigasi mobile"><a href="<?= e(app_url('home')) ?>"><span>⌂</span>Beranda</a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span>Layanan</a><a href="<?= e(app_url('berita')) ?>"><span>▦</span>Berita</a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span>Pengaduan</a><a href="<?= e(app_url('login')) ?>"><span>♙</span>Masuk</a></nav><?php endif; ?>
+
+<script src="assets/app.js" defer></script>
+</body>
+</html>
