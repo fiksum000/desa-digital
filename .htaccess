@@ -8,6 +8,6 @@ Options -Indexes
 </IfModule>
 
 # Keep private and operational root files out of HTTP responses.
-<FilesMatch "^(\.env($|\.)|schema\.sql|composer\.(json|lock)|Dockerfile|docker-compose.*\.yml|\.gitignore|\.dockerignore)$">
+<FilesMatch "^(\.env(\..*)?|schema\.sql|composer\.(json|lock)|Dockerfile|docker-compose.*\.yml|\.gitignore|\.dockerignore|.*~)$">
   Require all denied
 </FilesMatch>
