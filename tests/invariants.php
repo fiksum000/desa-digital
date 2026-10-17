@@ -14,7 +14,7 @@ function load_text(string $relative): string {
     return is_file($path) ? (string)file_get_contents($path) : '';
 }
 foreach ([
-    'index.php', 'schema.sql', 'app/bootstrap.php', 'assets/style.css',
+    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css',
     'assets/app.js', 'assets/village-hero.svg', 'Dockerfile',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
@@ -34,6 +34,9 @@ foreach ([
     'CREATE TABLE IF NOT EXISTS complaints',
     'CREATE TABLE IF NOT EXISTS news_posts',
     'CREATE TABLE IF NOT EXISTS audit_logs',
+    'CREATE TABLE IF NOT EXISTS site_content_revisions',
+    'CREATE TABLE IF NOT EXISTS public_directory_items',
+    'CREATE TABLE IF NOT EXISTS budget_reports',
     'UNIQUE KEY uq_resident_nik'
 ] as $needle) {
     check_true(str_contains($schema, $needle), "Database schema missing invariant: {$needle}");
@@ -46,6 +49,27 @@ foreach ([
     'SELECT tracking_code', "app_url('layanan',["
 ] as $needle) {
     check_true(str_contains($index, $needle), "App source missing expected functionality: {$needle}");
+}
+
+$modules = load_text('app/modules.php');
+foreach ([
+    'function module_handle_post',
+    'function module_serve_private_document',
+    'function module_serve_export',
+    'function module_upload_private_file',
+    'session_version=session_version+1',
+    'module_csv_safe'
+] as $needle) {
+    check_true(str_contains($modules, $needle), "Module source missing expected safety/functionality: {$needle}");
+}
+
+$views = load_text('app/module_views.php');
+foreach ([
+    'admin-users', 'admin-wilayah', 'admin-site', 'admin-services',
+    'admin-directory', 'admin-budget', 'rt-data', 'rw-rekap',
+    'private-document', 'module-export'
+] as $needle) {
+    check_true(str_contains($views, $needle), "Module views missing expected route: {$needle}");
 }
 
 $bootstrap = load_text('app/bootstrap.php');
