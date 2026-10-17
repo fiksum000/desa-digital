@@ -1,0 +1,53 @@
+services:
+  web:
+    build: .
+    container_name: desa-digital-web
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    environment:
+      APP_NAME: ${APP_NAME:-DESA DIGITAL}
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_KEY: ${APP_KEY:?Set APP_KEY in .env}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-desa_digital}
+      DB_USER: ${DB_USER:-desa_app}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - private_uploads:/var/www/html/storage/uploads
+      - public_uploads:/var/www/html/assets/uploads
+    networks:
+      - desa_private
+  db:
+    image: mariadb:11.4
+    container_name: desa-digital-db
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-desa_digital}
+      MARIADB_USER: ${DB_USER:-desa_app}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Set DB_ROOT_PASSWORD in .env}
+    volumes:
+      - database_data:/var/lib/mysql
+      - ./schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - desa_private
+    # Deliberately do not publish the database port to the LAN or internet.
+networks:
+  desa_private:
+    internal: false
+volumes:
+  database_data:
+  private_uploads:
+  public_uploads:
