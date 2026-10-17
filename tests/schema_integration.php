@@ -12,6 +12,11 @@ function expect_true(bool $condition, string $message): void {
     $checks++;
     if (!$condition) throw new RuntimeException($message);
 }
+
+expect_true(ini_get('session.use_strict_mode') === '1', 'PHP sessions must reject uninitialized client-provided session IDs.');
+expect_true(ini_get('session.use_only_cookies') === '1', 'Session IDs must not be accepted from URL parameters.');
+expect_true(ini_get('session.use_cookies') === '1', 'Session IDs must be transported with cookies.');
+expect_true(ini_get('session.use_trans_sid') === '0', 'URL-based session ID propagation must be disabled.');
 $required = [
     'dusun','rw_units','rt_units','app_users','family_records','residents',
     'resident_documents','resident_change_requests','service_types','service_requests',
