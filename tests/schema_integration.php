@@ -16,7 +16,7 @@ $required = [
     'dusun','rw_units','rt_units','app_users','family_records','residents',
     'resident_documents','resident_change_requests','service_types','service_requests',
     'service_request_files','complaints','news_posts','site_content','site_content_versions',
-    'site_content_revisions','public_directory_items','budget_reports','audit_logs','auth_attempts',
+    'site_content_revisions','public_directory_items','budget_reports','audit_logs','auth_attempts','user_notifications',
 ];
 require_once dirname(__DIR__) . '/app/modules.php';
 expect_true(module_csv_safe('=SUM(A1:A2)') === "'=SUM(A1:A2)", 'CSV formulas beginning with equals must be neutralized.');
@@ -101,6 +101,17 @@ try {
     $pdo->prepare("INSERT INTO app_users (username,full_name,password_hash,role,rt_id,rw_id,created_by,must_change_password) VALUES (?,?,?,'rt',?,?,?,1)")
         ->execute(['ci_rt','CI Ketua RT',password_hash('ci-test-password',PASSWORD_DEFAULT),$rtId,$rwId,$adminId]);
     $rtUserId = (int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT INTO user_notifications (user_id,title,message,notification_type,entity_type,entity_id) VALUES (?,?,?,'data_change','resident_change_request','CI-1')")
+        ->execute([$rtUserId,'Notifikasi uji','Pemberitahuan privat untuk pengurus RT.']);
+    $notificationId=(int)$pdo->lastInsertId();
+    $notifyStmt=$pdo->prepare('SELECT id,read_at FROM user_notifications WHERE id=? AND user_id=?');
+    $notifyStmt->execute([$notificationId,$rtUserId]);$ownedNotification=$notifyStmt->fetch();
+    expect_true($ownedNotification && $ownedNotification['read_at']===null, 'Notifications should appear unread only in the recipient inbox.');
+    $notifyStmt->execute([$notificationId,$wargaId]);
+    expect_true(!$notifyStmt->fetch(), 'A different account must not read another user’s notification.');
+    $pdo->prepare('UPDATE user_notifications SET read_at=NOW() WHERE id=? AND user_id=?')->execute([$notificationId,$rtUserId]);
+    $notifyStmt->execute([$notificationId,$rtUserId]);$readNotification=$notifyStmt->fetch();
+    expect_true($readNotification && $readNotification['read_at']!==null, 'A recipient may mark their own notification as read.');
     $stmt=$pdo->prepare('SELECT role,rt_id,rw_id,must_change_password,session_version FROM app_users WHERE id=?');
     $stmt->execute([$rtUserId]); $rtUser=$stmt->fetch();
     expect_true($rtUser && $rtUser['role']==='rt' && (int)$rtUser['rt_id']===$rtId && (int)$rtUser['must_change_password']===1, 'Role and RT assignment must persist');
