@@ -91,7 +91,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 echo '<div class="news-grid news-grid-wide">';
                 foreach($rows as $item) {
                     echo '<article class="news-card">';
-                    if(!empty($item['image_key'])) echo '<div class="news-image"><img src="'.e($item['image_key']).'" alt="'.e($item['alt_text'] ?: $item['title']).'"></div>';
+                    if(!empty($item['image_key'])) echo '<div class="news-image"><img src="'.e(public_image_src($item['image_key'],site_image_val('news_fallback_image','assets/village-hero.svg'))).'" alt="'.e($item['alt_text'] ?: $item['title']).'"></div>';
                     else echo '<div class="news-image"><img src="'.e(site_image_val('news_fallback_image','assets/village-hero.svg')).'" alt="Ilustrasi desa"></div>';
                     echo '<div class="news-content"><span class="status-pill neutral">'.e(strtoupper($item['kind'])).'</span><h3>'.e($item['title']).'</h3>';
                     if(!empty($item['excerpt'])) echo '<p>'.e($item['excerpt']).'</p>';
