@@ -188,7 +188,7 @@ try {
         $adminDashboardStats['pending_documents'] = (int)$pdo->query("SELECT COUNT(*) FROM resident_documents WHERE status IN ('pending','revision_requested')")->fetchColumn();
         $adminDashboardStats['pending_changes'] = (int)$pdo->query("SELECT COUNT(*) FROM resident_change_requests WHERE status IN ('submitted','in_review','revision_requested','conflict')")->fetchColumn();
         $adminDashboardStats['open_requests'] = (int)$pdo->query("SELECT COUNT(*) FROM service_requests WHERE status IN ('submitted','in_review','revision_requested')")->fetchColumn();
-        $adminDashboardStats['open_complaints'] = (int)$pdo->query("SELECT COUNT(*) FROM complaints WHERE status IN ('received','in_progress','waiting_reporter')")->fetchColumn();
+        $adminDashboardStats['open_complaints'] = (int)$pdo->query("SELECT COUNT(*) FROM complaints WHERE status IN ('received','in_review','in_progress','waiting_reporter')")->fetchColumn();
         $adminDashboardStats['active_users'] = (int)$pdo->query('SELECT COUNT(*) FROM app_users WHERE is_active=1')->fetchColumn();
     }
     if ($viewer) {
