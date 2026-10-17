@@ -72,7 +72,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Preview is text-only and uses textContent to avoid injecting HTML.
+  // Hero previews mirror the focal point saved by the admin.
+  const focusInputs = Array.from(document.querySelectorAll('[data-focus-key]'));
+  const getFocus = (key) => {
+    const field = focusInputs.find((input) => input.getAttribute('data-focus-key') === key);
+    return field ? Math.max(0, Math.min(100, Number(field.value) || 0)) : 50;
+  };
+  const updateHeroFocus = () => {
+    const x = getFocus('hero_focus_x');
+    const y = getFocus('hero_focus_y');
+    document.querySelectorAll('[data-preview-hero-image]').forEach((img) => {
+      img.style.objectPosition = x + '% ' + y + '%';
+    });
+    focusInputs.forEach((input) => {
+      const key = input.getAttribute('data-focus-key');
+      const output = document.querySelector('[data-focus-value="' + key + '"]');
+      if (output) output.textContent = input.value;
+    });
+  };
+  focusInputs.forEach((input) => input.addEventListener('input', updateHeroFocus));
+  updateHeroFocus();
+
+  const heroImageInput = document.getElementById('hero-image-input');
+  let heroPreviewUrl = null;
+  if (heroImageInput) {
+    heroImageInput.addEventListener('change', () => {
+      const file = heroImageInput.files && heroImageInput.files[0];
+      if (!file) return;
+      if (heroPreviewUrl) URL.revokeObjectURL(heroPreviewUrl);
+      heroPreviewUrl = URL.createObjectURL(file);
+      document.querySelectorAll('[data-preview-hero-image]').forEach((img) => {
+        img.src = heroPreviewUrl;
+      });
+    });
+  }
+
+  // Preview text uses textContent to avoid injecting HTML.
   document.querySelectorAll('[data-preview-key]').forEach((input) => {
     const key = input.getAttribute('data-preview-key');
     if (!key) return;
