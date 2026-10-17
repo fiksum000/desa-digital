@@ -66,8 +66,8 @@ expect_true($actionBlocked, 'The write-action limit must block requests after th
 $otherActionAllowed = true;
 try { user_action_rate_limit_consume('ci_complaint_submit', $limitedActionUser, 2, 600); } catch (RuntimeException $e) { $otherActionAllowed = false; }
 expect_true($otherActionAllowed, 'Each write-action type must have an independent throttle bucket.');
-$actionHash = hash_hmac('sha256', "user-action\\0" . $limitedAction . "\\0" . $limitedActionUser, private_identifier_key('user-action-rate-limit'));
-$otherActionHash = hash_hmac('sha256', "user-action\\0ci_complaint_submit\\0" . $limitedActionUser, private_identifier_key('user-action-rate-limit'));
+$actionHash = hash_hmac('sha256', 'user-action|' . $limitedAction . '|' . $limitedActionUser, private_identifier_key('user-action-rate-limit'));
+$otherActionHash = hash_hmac('sha256', 'user-action|ci_complaint_submit|' . $limitedActionUser, private_identifier_key('user-action-rate-limit'));
 db()->prepare('DELETE FROM auth_attempts WHERE bucket_hash IN (?,?)')->execute([$actionHash,$otherActionHash]);
 
 // Commit a minimal territory fixture first because module_is_allowed_rt intentionally
