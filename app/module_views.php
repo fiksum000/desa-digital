@@ -83,7 +83,7 @@ function mv_db_or_message(): ?PDO {
 /* Public pages use only published rows and intentionally avoid private resident data. */
 if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
     if($mvPage==='umkm') {
-        mv_top('UMKM & Wisata','Kenali usaha masyarakat dan tujuan wisata desa yang sudah disetujui untuk dipublikasikan.',true);
+        mv_top(site_val('umkm_title','UMKM & Wisata'),site_val('umkm_intro','Kenali usaha masyarakat dan tujuan wisata desa yang sudah disetujui untuk dipublikasikan.'),true);
         $dbx=mv_db_or_message();
         if($dbx) {
             $rows=$dbx->query("SELECT kind,title,slug,excerpt,description,address,contact,image_key,alt_text FROM public_directory_items WHERE status='published' ORDER BY sort_order,title LIMIT 100")->fetchAll();
@@ -92,7 +92,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 foreach($rows as $item) {
                     echo '<article class="news-card">';
                     if(!empty($item['image_key'])) echo '<div class="news-image"><img src="'.e($item['image_key']).'" alt="'.e($item['alt_text'] ?: $item['title']).'"></div>';
-                    else echo '<div class="news-image"><img src="assets/village-hero.svg" alt="Ilustrasi desa"></div>';
+                    else echo '<div class="news-image"><img src="'.e(site_val('news_fallback_image','assets/village-hero.svg')).'" alt="Ilustrasi desa"></div>';
                     echo '<div class="news-content"><span class="status-pill neutral">'.e(strtoupper($item['kind'])).'</span><h3>'.e($item['title']).'</h3>';
                     if(!empty($item['excerpt'])) echo '<p>'.e($item['excerpt']).'</p>';
                     echo '<p>'.nl2br(e($item['description'])).'</p>';
@@ -101,18 +101,18 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                     echo '</div></article>';
                 }
                 echo '</div>';
-            } else echo '<div class="empty-news"><div><strong>Konten UMKM dan wisata belum diterbitkan.</strong><p>Informasi akan tampil setelah disetujui pengelola desa.</p></div></div>';
+            } else echo '<div class="empty-news"><div><strong>'.e(site_val('umkm_empty_title','Konten UMKM dan wisata belum diterbitkan.')).'</strong><p>'.e(site_val('umkm_empty_text','Informasi akan tampil setelah disetujui pengelola desa.')).'</p></div></div>';
         }
     } elseif($mvPage==='peta') {
-        mv_top('Peta Desa','Gunakan tautan peta resmi yang telah diatur oleh Admin Desa.',true);
+        mv_top(site_val('map_title','Peta Desa'),site_val('map_intro','Gunakan tautan peta resmi yang telah diatur oleh Admin Desa.'),true);
         $mapUrl=site_val('map_public_url','');
-        echo '<section class="panel narrow-panel"><span class="profile-icon">⌖</span><h2>Lokasi wilayah desa</h2>';
+        echo '<section class="panel narrow-panel"><span class="profile-icon">⌖</span><h2>'.e(site_val('map_location_title','Lokasi wilayah desa')).'</h2>';
         if($mapUrl!=='' && filter_var($mapUrl,FILTER_VALIDATE_URL) && parse_url($mapUrl,PHP_URL_SCHEME)==='https') {
-            echo '<p>Peta resmi desa tersedia melalui tautan berikut.</p><a class="button button-primary" href="'.e($mapUrl).'" target="_blank" rel="noopener noreferrer">Buka peta desa ↗</a>';
-        } else echo '<p>Tautan peta belum diatur. Admin Desa dapat menambahkan tautan peta HTTPS melalui menu Tampilan Website.</p>';
+            echo '<p>'.e(site_val('map_intro','Peta resmi desa tersedia melalui tautan berikut.')).'</p><a class="button button-primary" href="'.e($mapUrl).'" target="_blank" rel="noopener noreferrer">'.e(site_val('map_link_text','Buka peta desa ↗')).'</a>';
+        } else echo '<p>'.e(site_val('map_empty_text','Tautan peta belum diatur. Admin Desa dapat menambahkan tautan peta HTTPS melalui menu Tampilan Website.')).'</p>';
         echo '</section>';
     } elseif($mvPage==='transparansi') {
-        mv_top('Transparansi Anggaran','Laporan yang tersedia untuk publik. Informasi ini hanya ditampilkan setelah diterbitkan oleh Admin Desa.',true);
+        mv_top(site_val('transparansi_title','Transparansi Anggaran'),site_val('transparansi_intro','Laporan yang tersedia untuk publik. Informasi ini hanya ditampilkan setelah diterbitkan oleh Admin Desa.'),true);
         $dbx=mv_db_or_message();
         if($dbx) {
             $rows=$dbx->query("SELECT fiscal_year,title,summary,amount,document_key,published_at FROM budget_reports WHERE status='published' ORDER BY fiscal_year DESC,title")->fetchAll();
@@ -125,11 +125,11 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                     echo '</div></article>';
                 }
                 echo '</div>';
-            } else echo '<div class="empty-news"><div><strong>Belum ada laporan anggaran yang diterbitkan.</strong><p>Laporan akan tampil setelah diperiksa dan disetujui.</p></div></div>';
+            } else echo '<div class="empty-news"><div><strong>'.e(site_val('transparansi_empty_title','Belum ada laporan anggaran yang diterbitkan.')).'</strong><p>'.e(site_val('transparansi_empty_text','Laporan akan tampil setelah diperiksa dan disetujui.')).'</p></div></div>';
         }
     } else {
-        mv_top('Kontak Desa','Informasi resmi kantor desa dan cara menghubungi petugas.',true);
-        echo '<section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2>Alamat kantor</h2><p>'.nl2br(e(site_val('office_address','Alamat kantor belum diatur.'))).'</p></div><div class="panel"><span class="profile-icon">☎</span><h2>Telepon / WhatsApp</h2><p>'.e(site_val('office_phone','Nomor kontak belum diatur.')).'</p></div><div class="panel"><span class="profile-icon">✉</span><h2>Informasi layanan</h2><p>'.e(site_val('contact_intro','Gunakan menu layanan atau pengaduan untuk menghubungi pemerintah desa.')).'</p></div></section>';
+        mv_top(site_val('contact_title','Kontak Desa'),site_val('contact_intro','Informasi resmi kantor desa dan cara menghubungi petugas.'),true);
+        echo '<section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2>'.e(site_val('office_address_title','Alamat kantor')).'</h2><p>'.nl2br(e(site_val('office_address','Alamat kantor belum diatur.'))).'</p></div><div class="panel"><span class="profile-icon">☎</span><h2>'.e(site_val('contact_phone_title','Telepon / WhatsApp')).'</h2><p>'.e(site_val('office_phone','Nomor kontak belum diatur.')).'</p></div><div class="panel"><span class="profile-icon">✉</span><h2>'.e(site_val('contact_info_title','Informasi layanan')).'</h2><p>'.e(site_val('contact_intro','Gunakan menu layanan atau pengaduan untuk menghubungi pemerintah desa.')).'</p></div></section>';
     }
 } else {
     $allowed=$mvAllowedRoles[$mvPage] ?? [];
@@ -418,12 +418,100 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
           'profil_potensi'=>'Potensi desa','umkm_intro'=>'Pengantar UMKM dan wisata','map_public_url'=>'Tautan peta HTTPS',
           'transparansi_intro'=>'Pengantar transparansi anggaran','contact_intro'=>'Petunjuk kontak layanan',
           'office_address'=>'Alamat kantor desa','office_phone'=>'Telepon/WhatsApp kantor','stat_area'=>'Luas wilayah (contoh: 325 ha)',
-          'stat_dusun'=>'Label jumlah dusun'
+          'stat_dusun'=>'Label jumlah dusun',
+          '__group_navigation'=>'Navigasi dan footer',
+          'meta_description'=>'Deskripsi SEO website','village_brand_prefix'=>'Teks awalan logo (contoh: DESA)',
+          'nav_home'=>'Menu Beranda','nav_services'=>'Menu Layanan Desa','nav_news'=>'Menu Berita & Pengumuman',
+          'nav_complaints'=>'Menu Pengaduan','nav_profile'=>'Menu Profil Desa','nav_more'=>'Menu Lainnya',
+          'nav_umkm'=>'Menu UMKM & Wisata','nav_map'=>'Menu Peta Desa','nav_budget'=>'Menu Transparansi Anggaran',
+          'nav_contact'=>'Menu Kontak','nav_search_aria'=>'Teks aksesibilitas tombol pencarian','nav_login'=>'Tombol masuk',
+          'footer_summary'=>'Ringkasan footer','footer_tagline'=>'Slogan footer','footer_services'=>'Tagline footer',
+          '__group_home'=>'Beranda publik',
+          'home_eyebrow'=>'Label kecil di atas judul utama','hero_cta_apply'=>'Tombol ajukan surat','hero_cta_track'=>'Tombol lacak pengajuan',
+          'benefit_easy'=>'Keunggulan 1','benefit_fast'=>'Keunggulan 2','benefit_transparent'=>'Keunggulan 3','benefit_all'=>'Keunggulan 4',
+          'service_card_service_title'=>'Judul kartu layanan surat','service_card_service_text'=>'Deskripsi kartu layanan surat',
+          'service_card_complaint_title'=>'Judul kartu pengaduan','service_card_complaint_text'=>'Deskripsi kartu pengaduan',
+          'service_card_info_title'=>'Judul kartu informasi','service_card_info_text'=>'Deskripsi kartu informasi',
+          'home_tracking_title'=>'Judul kotak pelacakan','home_tracking_subtitle'=>'Deskripsi kotak pelacakan',
+          'tracking_placeholder'=>'Contoh kode pelacakan','home_news_title'=>'Judul bagian berita',
+          'home_news_subtitle'=>'Deskripsi bagian berita','news_see_all'=>'Tautan lihat semua berita',
+          'home_no_news_title'=>'Judul saat belum ada berita','home_no_news_text'=>'Keterangan saat belum ada berita',
+          'stat_residents_label'=>'Label jumlah penduduk','stat_families_label'=>'Label jumlah KK',
+          'stat_area_label'=>'Label luas wilayah','stat_dusun_label'=>'Label jumlah dusun di beranda','stats_aria_label'=>'Label aksesibilitas statistik',
+          '__group_services_page'=>'Halaman layanan publik',
+          'services_eyebrow'=>'Label atas halaman layanan','services_title'=>'Judul halaman layanan','services_intro'=>'Deskripsi halaman layanan','services_list_title'=>'Judul daftar layanan',
+          '__group_complaints_page'=>'Halaman pengaduan publik',
+          'complaints_eyebrow'=>'Label atas halaman pengaduan','complaints_intro'=>'Deskripsi halaman pengaduan','complaints_form_title'=>'Judul formulir pengaduan',
+          'complaints_login_text'=>'Pesan bagi warga yang belum masuk','complaints_wrong_role_text'=>'Pesan akun selain warga','complaints_title_label'=>'Label judul laporan',
+          'complaints_category_label'=>'Label kategori laporan','complaints_detail_label'=>'Label detail laporan','complaints_submit_label'=>'Tombol kirim pengaduan',
+          '__group_tracking_page'=>'Halaman lacak pengajuan',
+          'tracking_eyebrow'=>'Label atas lacak pengajuan','tracking_title'=>'Judul halaman lacak pengajuan','tracking_intro'=>'Deskripsi halaman lacak pengajuan',
+          'tracking_check_button'=>'Tombol periksa kode','tracking_not_found'=>'Pesan saat kode tidak ditemukan',
+          '__group_news_page'=>'Halaman berita dan artikel',
+          'news_eyebrow'=>'Label atas halaman berita','news_title'=>'Judul halaman berita','news_intro'=>'Deskripsi halaman berita',
+          'news_empty_title'=>'Judul saat berita kosong','news_empty_text'=>'Deskripsi saat berita kosong','article_notfound_title'=>'Judul artikel tidak ditemukan',
+          'article_notfound_intro'=>'Deskripsi artikel tidak ditemukan','article_back_label'=>'Tombol kembali ke berita',
+          '__group_profile_page'=>'Halaman profil desa',
+          'profile_eyebrow'=>'Label atas profil desa','profile_title'=>'Judul halaman profil desa','profile_intro'=>'Deskripsi halaman profil desa',
+          'profile_history_title'=>'Judul bagian sejarah','profile_potential_title'=>'Judul bagian potensi desa','profile_contact_title'=>'Judul bagian kontak profil',
+          'profile_contact_text'=>'Keterangan kontak pada profil','profile_history_fallback'=>'Teks bawaan sejarah','profile_potential_fallback'=>'Teks bawaan potensi desa',
+          '__group_auth_pages'=>'Halaman masuk dan pendaftaran',
+          'login_eyebrow'=>'Label halaman masuk','login_title_prefix'=>'Awalan judul masuk','login_title_highlight'=>'Judul logo pada halaman masuk',
+          'login_intro'=>'Deskripsi halaman masuk','login_form_title'=>'Judul formulir masuk','login_submit_label'=>'Tombol masuk formulir',
+          'login_register_prompt'=>'Teks ajakan daftar','register_eyebrow'=>'Label halaman daftar','register_title_prefix'=>'Awalan judul halaman daftar',
+          'register_title_highlight'=>'Sorotan judul halaman daftar','register_intro'=>'Deskripsi halaman daftar','register_form_title'=>'Judul formulir daftar',
+          'register_submit_label'=>'Tombol daftar','register_login_prompt'=>'Teks ajakan masuk','register_password_hint'=>'Petunjuk kata sandi pendaftaran',
+          '__group_public_extra'=>'Halaman UMKM, peta, transparansi, dan kontak',
+          'umkm_title'=>'Judul halaman UMKM dan wisata','umkm_empty_title'=>'Judul UMKM/wisata kosong','umkm_empty_text'=>'Keterangan UMKM/wisata kosong',
+          'map_title'=>'Judul halaman peta desa','map_intro'=>'Deskripsi halaman peta','map_location_title'=>'Judul lokasi peta',
+          'map_link_text'=>'Tombol buka peta','map_empty_text'=>'Keterangan peta belum diatur',
+          'transparansi_title'=>'Judul transparansi anggaran','transparansi_empty_title'=>'Judul laporan anggaran kosong',
+          'transparansi_empty_text'=>'Keterangan laporan anggaran kosong','contact_title'=>'Judul halaman kontak','office_address_title'=>'Judul alamat kantor',
+          'contact_phone_title'=>'Judul telepon/WhatsApp','contact_info_title'=>'Judul informasi layanan kontak',
+          'page_unavailable_title'=>'Judul halaman tidak tersedia','page_unavailable_text'=>'Deskripsi halaman tidak tersedia','page_home_button'=>'Tombol kembali ke beranda'
         ];
         echo '<section class="panel"><h2>Editor konten</h2><form method="post" enctype="multipart/form-data" id="site-content-form" class="form-grid">'.csrf_field().'<input type="hidden" name="action" value="module_save_site">';
+        $siteDefaults = [
+          'meta_description'=>'Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.','village_name'=>'MAKASARI','village_brand_prefix'=>'DESA',
+          'hero_title_line1'=>'Layanan desa,','hero_title_prefix'=>'kini','hero_title_highlight'=>'lebih dekat','hero_subtitle'=>'Akses berbagai layanan surat, pengaduan, informasi, dan kabar desa dalam satu tempat, dengan mudah, cepat, dan transparan.',
+          'home_eyebrow'=>'Pelayanan Publik Desa','hero_cta_apply'=>'Ajukan Surat','hero_cta_track'=>'Lacak Pengajuan','benefit_easy'=>'Mudah diakses','benefit_fast'=>'Proses lebih cepat',
+          'benefit_transparent'=>'Transparan dan terpercaya','benefit_all'=>'Untuk seluruh warga','service_card_service_title'=>'Layanan Surat','service_card_service_text'=>'Ajukan berbagai surat keterangan dengan mudah dan cepat.',
+          'service_card_complaint_title'=>'Pengaduan Warga','service_card_complaint_text'=>'Sampaikan aspirasi, keluhan, atau laporan Anda.','service_card_info_title'=>'Informasi Desa',
+          'service_card_info_text'=>'Akses informasi seputar program, kegiatan, dan data desa.','home_tracking_title'=>'Cek Status Pengajuan','home_tracking_subtitle'=>'Masukkan nomor pengajuan Anda',
+          'tracking_placeholder'=>'Contoh: SR-260101-AB12CD34','home_news_title'=>'Berita & Pengumuman','home_news_subtitle'=>'Informasi terbaru seputar kegiatan, program, dan perkembangan desa.',
+          'news_see_all'=>'Lihat Semua','home_no_news_title'=>'Berita desa akan tampil di sini.','home_no_news_text'=>'Petugas dapat menerbitkan berita dan pengumuman melalui panel pengelolaan.',
+          'stat_residents_label'=>'Jumlah Penduduk','stat_families_label'=>'Jumlah KK','stat_area_label'=>'Luas Wilayah','stat_dusun_label'=>'Dusun','stats_aria_label'=>'Ringkasan data desa',
+          'nav_home'=>'Beranda','nav_services'=>'Layanan Desa','nav_news'=>'Berita & Pengumuman','nav_complaints'=>'Pengaduan','nav_profile'=>'Profil Desa','nav_more'=>'Lainnya',
+          'nav_umkm'=>'UMKM & Wisata','nav_map'=>'Peta Desa','nav_budget'=>'Transparansi Anggaran','nav_contact'=>'Kontak','nav_search_aria'=>'Cari berita','nav_login'=>'Masuk',
+          'footer_summary'=>'Layanan desa, kini lebih dekat.','footer_tagline'=>'Informasi publik dan pelayanan warga dalam satu tempat.','footer_services'=>'Pelayanan publik yang mudah, cepat, dan transparan.',
+          'services_eyebrow'=>'Pelayanan Publik','services_title'=>'Layanan Desa','services_intro'=>'Pilih jenis layanan yang kamu butuhkan. Status pengajuan dapat dipantau dengan kode pelacakan.','services_list_title'=>'Daftar layanan',
+          'complaints_eyebrow'=>'Suara Warga','complaints_intro'=>'Sampaikan aspirasi, keluhan, atau laporan. Data pelapor hanya terlihat oleh pihak yang berwenang.','complaints_form_title'=>'Kirim pengaduan',
+          'complaints_login_text'=>'Silakan masuk ke akun warga untuk mengirim pengaduan dan melacak tindak lanjutnya.','complaints_wrong_role_text'=>'Akun ini tidak memiliki akses untuk mengirim pengaduan sebagai warga.',
+          'complaints_title_label'=>'Judul laporan','complaints_category_label'=>'Kategori','complaints_detail_label'=>'Detail laporan','complaints_submit_label'=>'Kirim pengaduan →',
+          'tracking_eyebrow'=>'Transparan & Terpantau','tracking_title'=>'Lacak Pengajuan','tracking_intro'=>'Masukkan kode pelacakan untuk melihat status dan pembaruan yang boleh dibagikan kepada publik.',
+          'tracking_check_button'=>'Periksa','tracking_not_found'=>'Kode tidak ditemukan. Periksa kembali kode pada bukti pengajuan.',
+          'news_eyebrow'=>'Kabar Desa','news_title'=>'Berita & Pengumuman','news_intro'=>'Informasi kegiatan, program, dan pengumuman resmi desa.',
+          'news_empty_title'=>'Belum ada berita yang diterbitkan.','news_empty_text'=>'Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.','article_notfound_title'=>'Berita tidak ditemukan',
+          'article_notfound_intro'=>'Berita mungkin sudah diarsipkan atau alamatnya salah.','article_back_label'=>'← Kembali ke berita',
+          'profile_eyebrow'=>'Tentang Kami','profile_title'=>'Profil Desa','profile_intro'=>'Ruang informasi resmi desa. Identitas, sejarah, struktur pemerintahan, potensi, alamat, dan kontak akan dikelola melalui panel admin.',
+          'profile_history_title'=>'Profil & sejarah','profile_potential_title'=>'Potensi desa','profile_contact_title'=>'Kontak kantor','profile_contact_text'=>'Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.',
+          'profile_history_fallback'=>'Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.','profile_potential_fallback'=>'UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.',
+          'login_eyebrow'=>'Selamat datang kembali','login_title_prefix'=>'Masuk ke','login_title_highlight'=>'DESA MAKASARI','login_intro'=>'Akses layanan warga atau panel kerja sesuai peran akun kamu.','login_form_title'=>'Masuk',
+          'login_submit_label'=>'Masuk →','login_register_prompt'=>'Belum punya akun warga?','register_eyebrow'=>'Akun warga','register_title_prefix'=>'Layanan desa,','register_title_highlight'=>'lebih dekat.',
+          'register_intro'=>'Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.','register_form_title'=>'Daftar akun warga','register_submit_label'=>'Buat akun →',
+          'register_login_prompt'=>'Sudah punya akun?','register_password_hint'=>'Minimal 12 karakter.','umkm_title'=>'UMKM & Wisata',
+          'umkm_intro'=>'Kenali usaha masyarakat dan tujuan wisata desa yang sudah disetujui untuk dipublikasikan.','umkm_empty_title'=>'Konten UMKM dan wisata belum diterbitkan.','umkm_empty_text'=>'Informasi akan tampil setelah disetujui pengelola desa.',
+          'map_title'=>'Peta Desa','map_intro'=>'Gunakan tautan peta resmi yang telah diatur oleh Admin Desa.','map_location_title'=>'Lokasi wilayah desa','map_link_text'=>'Buka peta desa ↗',
+          'map_empty_text'=>'Tautan peta belum diatur. Admin Desa dapat menambahkan tautan peta HTTPS melalui menu Tampilan Website.',
+          'transparansi_title'=>'Transparansi Anggaran','transparansi_intro'=>'Laporan yang tersedia untuk publik. Informasi ini hanya ditampilkan setelah diterbitkan oleh Admin Desa.',
+          'transparansi_empty_title'=>'Belum ada laporan anggaran yang diterbitkan.','transparansi_empty_text'=>'Laporan akan tampil setelah diperiksa dan disetujui.',
+          'contact_title'=>'Kontak Desa','contact_intro'=>'Informasi resmi kantor desa dan cara menghubungi petugas.','office_address_title'=>'Alamat kantor','contact_phone_title'=>'Telepon / WhatsApp','contact_info_title'=>'Informasi layanan',
+          'page_unavailable_title'=>'Halaman tidak ditemukan','page_unavailable_text'=>'Alamat yang kamu buka tidak tersedia.','page_home_button'=>'Kembali ke beranda'
+        ];
         foreach($keys as $key=>$label) {
-            $value=site_val($key,'');
-            $isLong=in_array($key,['hero_subtitle','welcome_text','profil_sejarah','profil_potensi','umkm_intro','transparansi_intro','contact_intro','office_address'],true);
+            if(str_starts_with($key,'__group_')){echo '<div class="full-span cms-subheading"><h3>'.e($label).'</h3></div>';continue;}
+            $value=site_val($key,$siteDefaults[$key]??'');
+            $isLong=in_array($key,['hero_subtitle','welcome_text','profil_sejarah','profil_potensi','umkm_intro','transparansi_intro','contact_intro','office_address','meta_description','footer_summary','footer_tagline','home_news_subtitle','home_no_news_text','services_intro','complaints_intro','complaints_login_text','complaints_wrong_role_text','tracking_intro','tracking_not_found','news_intro','news_empty_text','article_notfound_intro','profile_intro','profile_history_fallback','profile_potential_fallback','profile_contact_text','login_intro','register_intro','map_intro','map_empty_text','transparansi_empty_text','page_unavailable_text'],true);
             $class=$isLong?' class="full-span"':'';
             echo '<label'.$class.'>'.e($label);
             if($isLong) echo '<textarea name="content['.e($key).']" rows="3" maxlength="20000" data-preview-key="'.e($key).'">'.e($value).'</textarea>';
@@ -433,7 +521,13 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             } else echo '<input name="content['.e($key).']" value="'.e($value).'" maxlength="500" data-preview-key="'.e($key).'">';
             echo '</label>';
         }
-        echo '<label class="full-span">Unggah foto hero (JPG/PNG/WebP, maks. 5 MB)<input type="file" name="hero_image" accept="image/jpeg,image/png,image/webp" id="hero-image-input"></label>';
+        echo '<div class="full-span cms-subheading"><h3>Foto dan logo website publik</h3><p>Unggah gambar dari ukuran apa pun. Website otomatis menyesuaikan gambar dengan bingkai desktop dan HP.</p></div>';
+        $siteImages=['hero_image'=>['label'=>'Foto utama beranda','fallback'=>'assets/village-hero.webp'],'logo_image'=>['label'=>'Logo/header dan footer','fallback'=>''],'login_image'=>['label'=>'Gambar halaman masuk','fallback'=>'assets/village-hero.webp'],'register_image'=>['label'=>'Gambar halaman pendaftaran','fallback'=>'assets/village-hero.webp'],'news_fallback_image'=>['label'=>'Gambar pengganti berita/UMKM tanpa foto','fallback'=>'assets/village-hero.svg']];
+        foreach($siteImages as $imageKey=>$imageMeta){
+            $currentImage=site_val($imageKey,'');$previewImage=$currentImage!==''?$currentImage:$imageMeta['fallback'];$previewHidden=$previewImage===''?' hidden':'';
+            echo '<label class="full-span">'.e($imageMeta['label']).'<input type="file" name="'.e($imageKey).'" accept="image/jpeg,image/png,image/webp" '.($imageKey==='hero_image'?'id="hero-image-input"':'').' data-preview-image-key="'.e($imageKey).'"><small>JPG, PNG, atau WebP · maksimal 5 MB'.($currentImage!==''?' · Gambar khusus saat ini aktif':'').'</small></label>';
+            echo '<div class="full-span cms-image-preview"><span>Pratinjau: '.e($imageMeta['label']).'</span><img data-preview-site-image="'.e($imageKey).'" src="'.e($previewImage).'" alt=""'.$previewHidden.'></div>';
+        }
         $focusX=max(0,min(100,(int)site_val('hero_focus_x','50')));$focusY=max(0,min(100,(int)site_val('hero_focus_y','50')));$heroPreview=e(site_val('hero_image','assets/village-hero.svg'));$heroAlt=e(site_val('hero_image_alt','Pemandangan desa dan pegunungan'));
         echo '<div class="full-span preview-columns"><div class="preview-desktop"><div class="preview-label">Pratinjau desktop</div><div class="preview-mini"><img class="preview-hero-img" data-preview-hero-image src="'.$heroPreview.'" alt="'.$heroAlt.'" style="object-position:'.$focusX.'% '.$focusY.'%"><strong data-preview-target="hero_title_line1">'.e(site_val('hero_title_line1','Layanan desa,')).'</strong><br><span data-preview-target="hero_title_highlight">'.e(site_val('hero_title_highlight','lebih dekat')).'</span><p data-preview-target="hero_subtitle">'.e(site_val('hero_subtitle','Akses berbagai layanan desa dalam satu tempat.')).'</p></div></div><div class="preview-mobile"><div class="preview-label">Pratinjau HP</div><div class="preview-mini"><img class="preview-hero-img" data-preview-hero-image src="'.$heroPreview.'" alt="'.$heroAlt.'" style="object-position:'.$focusX.'% '.$focusY.'%"><strong data-preview-target="hero_title_line1">'.e(site_val('hero_title_line1','Layanan desa,')).'</strong><br><span data-preview-target="hero_title_highlight">'.e(site_val('hero_title_highlight','lebih dekat')).'</span><p data-preview-target="hero_subtitle">'.e(site_val('hero_subtitle','Akses berbagai layanan desa dalam satu tempat.')).'</p></div></div></div>';
         echo '<div class="full-span button-row"><button class="button button-outline" type="submit" name="operation" value="draft">Simpan sebagai draf</button><button class="button button-primary" type="submit" name="operation" value="publish" data-confirm="Terbitkan perubahan konten ke website publik?">Terbitkan ke website →</button></div></form></section>';
