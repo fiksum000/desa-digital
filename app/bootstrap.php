@@ -2,6 +2,13 @@
 declare(strict_types=1);
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
+    // Apply session protections before session_start() accepts a client-provided ID.
+    // ini_set() may be restricted by hosting policy; deployment checks should verify
+    // the effective values as well as this application's requested values.
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
+    ini_set('session.use_cookies', '1');
+    ini_set('session.use_trans_sid', '0');
     $secureCookie = (getenv('SESSION_SECURE_COOKIE') === 'true')
         || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
     session_name('desa_digital_session');
