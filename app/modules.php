@@ -1281,3 +1281,200 @@ function module_serve_private_service_file(): void {
     }
 }
 
+function module_service_letter_text_escape(string $text): string {
+    $text = preg_replace('/[\\x00-\\x1F\\x7F]/u', ' ', $text) ?? '';
+    $converted = function_exists('iconv') ? @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text) : false;
+    if ($converted !== false) $text = $converted;
+    $text = preg_replace('/[^\\x20-\\x7E\\x80-\\xFF]/', '?', $text) ?? '';
+    return str_replace(['\\\\', '(', ')'], ['\\\\\\\\', '\\\\(', '\\\\)'], $text);
+}
+
+function module_build_service_letter_pdf(array $request, array $site): string {
+    $pages = [];
+    $commands = [];
+    $y = 790;
+
+    $startPage = function () use (&$commands, &$y): void {
+        $commands = ['0.02 0.34 0.25 RG 2 w 42 810 m 553 810 l S'];
+        $y = 790;
+    };
+    $finishPage = function () use (&$pages, &$commands): void {
+        if ($commands) $pages[] = implode("\\n", $commands);
+    };
+    $writeLine = function (string $text, float $size = 10.5, bool $bold = false, string $align = 'left', float $gap = 16) use (&$commands, &$y, &$startPage, &$finishPage): void {
+        if ($y < 80) {
+            $finishPage();
+            $startPage();
+        }
+        $text = trim(preg_replace('/[\\r\\n\\t]+/u', ' ', $text) ?? '');
+        $converted = function_exists('iconv') ? @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text) : false;
+        $plain = $converted !== false ? $converted : $text;
+        $escaped = module_service_letter_text_escape($text);
+        $width = strlen($plain) * $size * 0.48;
+        $x = 52.0;
+        if ($align === 'center') $x = max(42.0, (595.0 - $width) / 2.0);
+        if ($align === 'right') $x = max(42.0, 545.0 - $width);
+        $font = $bold ? 'F2' : 'F1';
+        $commands[] = sprintf('BT /%s %.1f Tf 1 0 0 1 %.2f %.2f Tm (%s) Tj ET', $font, $size, $x, $y, $escaped);
+        $y -= $gap;
+    };
+    $drawRule = function () use (&$commands, &$y): void {
+        $commands[] = sprintf('0.35 G 0.7 w 48 %.2f m 547 %.2f l S', $y, $y);
+        $y -= 18;
+    };
+    $writeParagraph = function (string $text, float $size = 10.5, float $gap = 15) use (&$writeLine): void {
+        $text = trim($text);
+        if ($text === '') return;
+        foreach (explode("\\n", wordwrap($text, 84, "\\n", true)) as $line) {
+            $writeLine($line, $size, false, 'left', $gap);
+        }
+    };
+
+    $startPage();
+    $village = trim((string)($site['village_name'] ?? ''));
+    $address = trim((string)($site['office_address'] ?? ''));
+    $subdistrict = trim((string)($site['village_subdistrict'] ?? ''));
+    $regency = trim((string)($site['village_regency'] ?? ''));
+    $province = trim((string)($site['village_province'] ?? ''));
+    $headName = trim((string)($site['village_head_name'] ?? ''));
+    $headTitle = trim((string)($site['village_head_title'] ?? '')) ?: 'Kepala Desa';
+    $officePhone = trim((string)($site['office_phone'] ?? ''));
+
+    $writeLine('PEMERINTAH DESA ' . mb_strtoupper($village), 14, true, 'center', 20);
+    $area = array_values(array_filter([
+        $subdistrict !== '' ? 'KECAMATAN ' . mb_strtoupper($subdistrict) : '',
+        $regency !== '' ? 'KABUPATEN/KOTA ' . mb_strtoupper($regency) : '',
+        $province !== '' ? mb_strtoupper($province) : '',
+    ], static fn(string $part): bool => $part !== ''));
+    if ($area) $writeLine(implode('  |  ', $area), 8.5, false, 'center', 14);
+    if ($address !== '') $writeLine($address, 9, false, 'center', 13);
+    if ($officePhone !== '') $writeLine('Kontak kantor: ' . $officePhone, 9, false, 'center', 14);
+    $drawRule();
+
+    $serviceName = trim((string)($request['service_name'] ?? 'Layanan Desa'));
+    $writeLine(mb_strtoupper($serviceName), 13, true, 'center', 20);
+    $writeLine('Nomor: ' . trim((string)($request['letter_number'] ?? '')), 10, true, 'center', 22);
+    $drawRule();
+
+    $approvedDate = !empty($request['approved_at']) ? date('d-m-Y', strtotime((string)$request['approved_at'])) : date('d-m-Y');
+    $writeParagraph('Berdasarkan pemeriksaan dan persetujuan pejabat desa, berikut adalah ringkasan surat layanan yang diterbitkan pada ' . $approvedDate . '.', 10.5, 17);
+    $writeLine('Nama pemohon: ' . trim((string)($request['applicant_name'] ?? '')), 11, true, 'left', 18);
+    $writeLine('Jenis layanan: ' . $serviceName, 10.5, false, 'left', 17);
+    $writeParagraph('Perihal: ' . trim((string)($request['subject'] ?? '')), 10.5, 17);
+    $writeLine('Kode pelacakan: ' . trim((string)($request['tracking_code'] ?? '')), 9, false, 'left', 16);
+    $writeLine('Keterangan permohonan:', 10.5, true, 'left', 16);
+
+    $requestData = json_decode((string)($request['request_data'] ?? '{}'), true);
+    $details = is_array($requestData) ? trim((string)($requestData['details'] ?? '')) : '';
+    if ($details !== '') $writeParagraph($details, 10, 14);
+    else $writeLine('(Tidak ada keterangan tambahan.)', 10, false, 'left', 15);
+
+    $writeParagraph('Surat layanan ini diterbitkan dengan nomor di atas berdasarkan informasi permohonan dan status persetujuan yang tercatat dalam sistem layanan desa.', 10, 16);
+    $writeParagraph('Format isi surat ini adalah templat umum. Pastikan substansi, persyaratan, dan dasar hukum disesuaikan dengan jenis layanan serta SOP pemerintah desa sebelum dipakai sebagai surat resmi.', 8.5, 14);
+
+    if ($y < 145) {
+        $finishPage();
+        $startPage();
+    } else {
+        $y -= 8;
+    }
+    $place = $regency !== '' ? $regency : $village;
+    $issueDate = !empty($request['letter_issued_at']) ? date('d-m-Y', strtotime((string)$request['letter_issued_at'])) : date('d-m-Y');
+    $writeLine($place . ', ' . $issueDate, 10, false, 'right', 17);
+    $writeLine('Mengetahui,', 10, false, 'right', 16);
+    $writeLine($headTitle, 10, false, 'right', 42);
+    $writeLine($headName, 11, true, 'right', 15);
+    $writeLine('Diterbitkan melalui Portal DESA DIGITAL', 8, false, 'center', 12);
+    $finishPage();
+
+    $objects = [];
+    $objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    $kids = [];
+    $pageCount = count($pages);
+    for ($i = 0; $i < $pageCount; $i++) {
+        $pageObject = 5 + ($i * 2);
+        $streamObject = $pageObject + 1;
+        $kids[] = $pageObject . ' 0 R';
+        $objects[$pageObject] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' . $streamObject . ' 0 R >>';
+        $stream = $pages[$i];
+        $objects[$streamObject] = '<< /Length ' . strlen($stream) . " >>\\nstream\\n" . $stream . "\\nendstream";
+    }
+    $objects[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . $pageCount . ' >>';
+    $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+    $objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+    ksort($objects);
+
+    $pdf = "%PDF-1.4\\n";
+    $offsets = [0];
+    $maxId = max(array_keys($objects));
+    for ($id = 1; $id <= $maxId; $id++) {
+        $offsets[$id] = strlen($pdf);
+        $pdf .= $id . " 0 obj\\n" . $objects[$id] . "\\nendobj\\n";
+    }
+    $xrefOffset = strlen($pdf);
+    $pdf .= "xref\\n0 " . ($maxId + 1) . "\\n";
+    $pdf .= "0000000000 65535 f \\n";
+    for ($id = 1; $id <= $maxId; $id++) {
+        $pdf .= sprintf("%010d 00000 n \\n", $offsets[$id]);
+    }
+    $pdf .= "trailer\\n<< /Size " . ($maxId + 1) . " /Root 1 0 R >>\\nstartxref\\n" . $xrefOffset . "\\n%%EOF\\n";
+    return $pdf;
+}
+
+function module_can_access_service_letter(array $user, array $request): bool {
+    $role = (string)($user['role'] ?? '');
+    if ($role === 'warga') {
+        return (int)($user['id'] ?? 0) > 0
+            && (int)($request['applicant_id'] ?? 0) === (int)$user['id'];
+    }
+    return in_array($role, ['petugas', 'admin_desa', 'kepala_desa'], true);
+}
+
+function module_serve_service_letter_pdf(): void {
+    if ((string)($_GET['page'] ?? '') !== 'service-letter-pdf') return;
+    $user = require_login();
+    $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
+    if (!$id) { http_response_code(404); exit('Surat tidak ditemukan.'); }
+    try {
+        $stmt = db()->prepare(
+            'SELECT sr.*, st.name AS service_name, applicant.full_name AS applicant_name
+             FROM service_requests sr
+             JOIN service_types st ON st.id=sr.service_type_id
+             JOIN app_users applicant ON applicant.id=sr.applicant_id
+             WHERE sr.id=? LIMIT 1'
+        );
+        $stmt->execute([$id]);
+        $request = $stmt->fetch();
+        if (!$request || !module_can_access_service_letter($user, $request)) {
+            http_response_code(404);
+            exit('Surat tidak ditemukan.');
+        }
+        if (!in_array((string)$request['status'], ['approved','ready','completed'], true) || trim((string)($request['letter_number'] ?? '')) === '') {
+            http_response_code(404);
+            exit('Surat belum disetujui atau nomor surat belum diterbitkan.');
+        }
+        $stmt = db()->query("SELECT content_key,content_value FROM site_content WHERE status='published'");
+        $site = [];
+        foreach ($stmt->fetchAll() as $item) $site[(string)$item['content_key']] = (string)$item['content_value'];
+        foreach (['village_name','office_address','village_regency','village_province','village_head_name'] as $required) {
+            if (trim((string)($site[$required] ?? '')) === '') {
+                http_response_code(409);
+                exit('Lengkapi nama desa, alamat kantor, kabupaten/kota, provinsi, dan nama kepala desa pada menu Admin Desa - Tampilan Website.');
+            }
+        }
+        $pdf = module_build_service_letter_pdf($request, $site);
+        module_audit_actor($user, 'download_letter_pdf', 'service_requests', (int)$id, ['letter_number' => (string)$request['letter_number']]);
+        header('Content-Type: application/pdf');
+        header('Content-Length: ' . strlen($pdf));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, no-store, max-age=0');
+        header('Content-Disposition: attachment; filename="surat-layanan-' . (int)$id . '.pdf"');
+        echo $pdf;
+        exit;
+    } catch (Throwable $e) {
+        error_log('Service letter PDF generation failed.');
+        http_response_code(500);
+        exit('PDF surat belum dapat dibuat.');
+    }
+}
+
