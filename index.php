@@ -73,6 +73,21 @@ function site_val(string $key, string $default = ''): string {
     return isset($siteContent[$key]) ? (string)$siteContent[$key] : $default;
 }
 
+/**
+ * Resolve only CMS-managed relative image paths. If the database ever contains
+ * an unexpected path, ignore it rather than emitting it into a public img src.
+ */
+function site_image_val(string $key, string $default = ''): string {
+    $imageKeys = ['hero_image','logo_image','login_image','register_image','news_fallback_image'];
+    if (!in_array($key, $imageKeys, true)) return $default;
+    $value = trim(site_val($key, ''));
+    if ($value === '') return $default;
+    $staticImages = ['assets/village-hero.svg','assets/village-hero.webp'];
+    if (in_array($value, $staticImages, true)) return $value;
+    if (preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#D', $value) === 1) return $value;
+    return $default;
+}
+
 if ($viewer && !empty($viewer['must_change_password'])) {
     $requestedAction = $_SERVER['REQUEST_METHOD'] === 'POST' ? (string)($_POST['action'] ?? '') : '';
     if ($page !== 'change-password' && !in_array($requestedAction, ['change_password','logout'], true)) {
@@ -83,17 +98,29 @@ if ($viewer && !empty($viewer['must_change_password'])) {
 function upload_public_image(string $field): ?string {
     if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
     $file = $_FILES[$field];
-    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || (int)$file['size'] > 5 * 1024 * 1024) {
-        throw new RuntimeException('Gambar gagal diunggah atau melebihi 5 MB.');
+    $tmp = (string)($file['tmp_name'] ?? '');
+    $size = (int)($file['size'] ?? 0);
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || $size < 1 || $size > 5 * 1024 * 1024 || !is_uploaded_file($tmp)) {
+        throw new RuntimeException('Gambar gagal diunggah, file tidak valid, atau melebihi 5 MB.');
     }
     $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($file['tmp_name']);
+    $mime = $finfo->file($tmp);
     $extensions = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];
-    if (!isset($extensions[$mime])) throw new RuntimeException('Format gambar harus JPG, PNG, atau WebP.');
+    if (!is_string($mime) || !isset($extensions[$mime])) throw new RuntimeException('Format gambar harus JPG, PNG, atau WebP.');
+    $imageInfo = @getimagesize($tmp);
+    if (!is_array($imageInfo) || ($imageInfo['mime'] ?? '') !== $mime) {
+        throw new RuntimeException('Isi file tidak cocok dengan format gambar yang diizinkan.');
+    }
+    $width = (int)($imageInfo[0] ?? 0);
+    $height = (int)($imageInfo[1] ?? 0);
+    // Bound decompression cost while allowing wide/tall images and arbitrary aspect ratios.
+    if ($width < 1 || $height < 1 || $width > 20000 || $height > 20000 || ($width * $height) > 40000000) {
+        throw new RuntimeException('Resolusi gambar terlalu besar. Gunakan gambar maksimal 40 megapiksel.');
+    }
     $dir = __DIR__ . '/assets/uploads';
     if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) throw new RuntimeException('Penyimpanan gambar tidak tersedia.');
     $name = bin2hex(random_bytes(18)) . '.' . $extensions[$mime];
-    if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $name)) throw new RuntimeException('Gagal menyimpan gambar.');
+    if (!move_uploaded_file($tmp, $dir . '/' . $name)) throw new RuntimeException('Gagal menyimpan gambar.');
     return 'assets/uploads/' . $name;
 }
 
@@ -499,6 +526,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 try {
     $pdo = db();
+    // Read only published website content for public rendering. Drafts remain private
+    // to the editor and must never leak into the anonymous pages.
+    $siteStmt = $pdo->query("SELECT content_key,content_value FROM site_content WHERE status='published'");
+    foreach ($siteStmt->fetchAll() as $siteRow) {
+        $siteContent[(string)$siteRow['content_key']] = trim((string)$siteRow['content_value']);
+    }
     if ($page === 'track' && isset($_GET['code'])) {
         $code = strtoupper(trim((string)$_GET['code']));
         if (preg_match('/^[A-Z0-9-]{5,32}$/', $code)) {
@@ -547,12 +580,12 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
   <meta name="theme-color" content="#075b46">
   <meta name="description" content="<?= e(site_val('meta_description','Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.')) ?>">
   <title><?= e($title) ?> · <?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></title>
-  <link rel="stylesheet" href="assets/style.css?v=1">
+  <link rel="stylesheet" href="assets/style.css?v=2">
 </head>
 <body>
 <header class="site-header">
   <a class="brand" href="<?= e(app_url('home')) ?>" aria-label="<?= e(site_val('village_brand_prefix','DESA').' '.site_val('village_name','MAKASARI').' - '.site_val('nav_home','Beranda')) ?>">
-    <span class="brand-mark" aria-hidden="true"><?php if(site_val('logo_image','')!==''): ?><img class="brand-logo-image" src="<?= e(site_val('logo_image','')) ?>" alt=""><?php else: ?><svg viewBox="0 0 40 40"><path d="M5 31 27 4h9L14 36H5z" fill="#77b84a"/><path d="M31 4h5v14c0 10-7 18-18 18h-4z" fill="#07634e"/><path d="M5 31 27 4" stroke="#e8f4d7" stroke-width="1.3"/></svg><?php endif; ?></span>
+    <span class="brand-mark" aria-hidden="true"><?php if(site_image_val('logo_image','')!==''): ?><img class="brand-logo-image" src="<?= e(site_image_val('logo_image','')) ?>" alt=""><?php else: ?><svg viewBox="0 0 40 40"><path d="M5 31 27 4h9L14 36H5z" fill="#77b84a"/><path d="M31 4h5v14c0 10-7 18-18 18h-4z" fill="#07634e"/><path d="M5 31 27 4" stroke="#e8f4d7" stroke-width="1.3"/></svg><?php endif; ?></span>
     <span><strong><?= e(site_val('village_brand_prefix','DESA')) ?></strong> <?= e(site_val('village_name','MAKASARI')) ?></span>
   </a>
   <nav class="main-nav" aria-label="Navigasi utama">
@@ -608,7 +641,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
       </div>
     </div>
     <div class="hero-visual">
-      <img src="<?= e(site_val('hero_image','assets/village-hero.webp')) ?>" alt="<?= e(site_val('hero_image_alt','Pemandangan desa dan pegunungan')) ?>" style="object-position:<?= max(0,min(100,(int)site_val('hero_focus_x','50'))) ?>% <?= max(0,min(100,(int)site_val('hero_focus_y','50'))) ?>%">
+      <img src="<?= e(site_image_val('hero_image','assets/village-hero.webp')) ?>" alt="<?= e(site_val('hero_image_alt','Pemandangan desa dan pegunungan')) ?>" style="object-position:<?= max(0,min(100,(int)site_val('hero_focus_x','50'))) ?>% <?= max(0,min(100,(int)site_val('hero_focus_y','50'))) ?>%">
       <div class="welcome-card"><span class="weather-icon">☀</span><strong><?= e(site_val('welcome_title','Pagi yang baik, Warga Desa!')) ?></strong><p><?= e(site_val('welcome_text','Bersama membangun desa yang lebih maju dan sejahtera.')) ?></p></div>
       <div class="slider-dots"><span>‹</span><i></i><span>›</span></div>
     </div>
@@ -629,7 +662,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
       <div class="news-grid">
       <?php foreach (array_slice($news,0,3) as $item): ?>
         <article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>">
-          <?php if (!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?>
+          <?php if (!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?>
           <span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a>
           <div class="news-content"><time><?= e(date('d M Y', strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><a class="news-arrow" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>" aria-label="Baca berita">→</a></div></article>
       <?php endforeach; ?>
@@ -673,7 +706,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
 
 <?php elseif ($page === 'berita'): ?>
   <section class="page-hero"><span class="eyebrow"><?= e(site_val('news_eyebrow','Kabar Desa')) ?></span><h1><?= e(site_val('news_title','Berita & Pengumuman')) ?></h1><p><?= e(site_val('news_intro','Informasi kegiatan, program, dan pengumuman resmi desa.')) ?></p></section>
-  <?php if ($news): ?><div class="news-grid news-grid-wide"><?php foreach($news as $item): ?><article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?php if(!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?><span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a><div class="news-content"><time><?= e(date('d M Y',strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><p><?= e($item['excerpt'] ?? '') ?></p></div></article><?php endforeach; ?></div><?php else: ?><div class="empty-news"><div><strong><?= e(site_val('news_empty_title','Belum ada berita yang diterbitkan.')) ?></strong><p><?= e(site_val('news_empty_text','Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.')) ?></p></div></div><?php endif; ?>
+  <?php if ($news): ?><div class="news-grid news-grid-wide"><?php foreach($news as $item): ?><article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?php if(!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="Ilustrasi desa"><?php endif; ?><span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a><div class="news-content"><time><?= e(date('d M Y',strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><p><?= e($item['excerpt'] ?? '') ?></p></div></article><?php endforeach; ?></div><?php else: ?><div class="empty-news"><div><strong><?= e(site_val('news_empty_title','Belum ada berita yang diterbitkan.')) ?></strong><p><?= e(site_val('news_empty_text','Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.')) ?></p></div></div><?php endif; ?>
 
 <?php elseif ($page === 'article'): ?>
   <?php if (!$article): ?><section class="page-hero"><h1><?= e(site_val('article_notfound_title','Berita tidak ditemukan')) ?></h1><p><?= e(site_val('article_notfound_intro','Berita mungkin sudah diarsipkan atau alamatnya salah.')) ?></p><a class="button button-primary" href="<?= e(app_url('berita')) ?>"><?= e(site_val('article_back_label','Kembali ke berita')) ?></a></section>
@@ -684,10 +717,10 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
   <section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2><?= e(site_val('profile_history_title','Profil & sejarah')) ?></h2><p><?= e(site_val('profil_sejarah',site_val('profile_history_fallback','Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.'))) ?></p></div><div class="panel"><span class="profile-icon">♧</span><h2><?= e(site_val('profile_potential_title','Potensi desa')) ?></h2><p><?= e(site_val('profil_potensi',site_val('profile_potential_fallback','UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.'))) ?></p></div><div class="panel"><span class="profile-icon">✉</span><h2><?= e(site_val('profile_contact_title','Kontak kantor')) ?></h2><p><?= e(site_val('profile_contact_text','Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.')) ?></p></div></section>
 
 <?php elseif ($page === 'login'): ?>
-  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow"><?= e(site_val('login_eyebrow','Selamat datang kembali')) ?></span><h1><?= e(site_val('login_title_prefix','Masuk ke')) ?><br><em><?= e(site_val('login_title_highlight','DESA MAKASARI')) ?></em></h1><p><?= e(site_val('login_intro','Akses layanan warga atau panel kerja sesuai peran akun kamu.')) ?></p><img src="<?= e(site_val('login_image','assets/village-hero.webp')) ?>" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2><?= e(site_val('login_form_title','Masuk')) ?></h2><p class="muted">Gunakan username dan kata sandi yang terdaftar.</p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label>Username<input name="username" autocomplete="username" required maxlength="80"></label><label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit"><?= e(site_val('login_submit_label','Masuk →')) ?></button></form><p class="auth-foot"><?= e(site_val('login_register_prompt','Belum punya akun warga?')) ?> <a href="<?= e(app_url('register')) ?>"><?= e(site_val('register_submit_label','Daftar di sini')) ?></a></p></div></section>
+  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow"><?= e(site_val('login_eyebrow','Selamat datang kembali')) ?></span><h1><?= e(site_val('login_title_prefix','Masuk ke')) ?><br><em><?= e(site_val('login_title_highlight','DESA MAKASARI')) ?></em></h1><p><?= e(site_val('login_intro','Akses layanan warga atau panel kerja sesuai peran akun kamu.')) ?></p><img src="<?= e(site_image_val('login_image','assets/village-hero.webp')) ?>" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2><?= e(site_val('login_form_title','Masuk')) ?></h2><p class="muted">Gunakan username dan kata sandi yang terdaftar.</p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label>Username<input name="username" autocomplete="username" required maxlength="80"></label><label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit"><?= e(site_val('login_submit_label','Masuk →')) ?></button></form><p class="auth-foot"><?= e(site_val('login_register_prompt','Belum punya akun warga?')) ?> <a href="<?= e(app_url('register')) ?>"><?= e(site_val('register_submit_label','Daftar di sini')) ?></a></p></div></section>
 
 <?php elseif ($page === 'register'): ?>
-  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow"><?= e(site_val('register_eyebrow','Akun warga')) ?></span><h1><?= e(site_val('register_title_prefix','Layanan desa,')) ?><br><em><?= e(site_val('register_title_highlight','lebih dekat.')) ?></em></h1><p><?= e(site_val('register_intro','Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.')) ?></p><img src="<?= e(site_val('register_image','assets/village-hero.webp')) ?>" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2><?= e(site_val('register_form_title','Daftar akun warga')) ?></h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="register"><label>Nama lengkap<input name="full_name" autocomplete="name" required maxlength="160"></label><label>Username<input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{4,80}" required minlength="4" maxlength="80"></label><label>Email (opsional)<input type="email" name="email" autocomplete="email" maxlength="190"></label><label>Kata sandi<input type="password" name="password" autocomplete="new-password" required minlength="12"><small><?= e(site_val('register_password_hint','Minimal 12 karakter.')) ?></small></label><button class="button button-primary button-full" type="submit"><?= e(site_val('register_submit_label','Buat akun →')) ?></button></form><p class="auth-foot"><?= e(site_val('register_login_prompt','Sudah punya akun?')) ?> <a href="<?= e(app_url('login')) ?>"><?= e(site_val('nav_login','Masuk')) ?></a></p></div></section>
+  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow"><?= e(site_val('register_eyebrow','Akun warga')) ?></span><h1><?= e(site_val('register_title_prefix','Layanan desa,')) ?><br><em><?= e(site_val('register_title_highlight','lebih dekat.')) ?></em></h1><p><?= e(site_val('register_intro','Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.')) ?></p><img src="<?= e(site_image_val('register_image','assets/village-hero.webp')) ?>" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2><?= e(site_val('register_form_title','Daftar akun warga')) ?></h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="register"><label>Nama lengkap<input name="full_name" autocomplete="name" required maxlength="160"></label><label>Username<input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{4,80}" required minlength="4" maxlength="80"></label><label>Email (opsional)<input type="email" name="email" autocomplete="email" maxlength="190"></label><label>Kata sandi<input type="password" name="password" autocomplete="new-password" required minlength="12"><small><?= e(site_val('register_password_hint','Minimal 12 karakter.')) ?></small></label><button class="button button-primary button-full" type="submit"><?= e(site_val('register_submit_label','Buat akun →')) ?></button></form><p class="auth-foot"><?= e(site_val('register_login_prompt','Sudah punya akun?')) ?> <a href="<?= e(app_url('login')) ?>"><?= e(site_val('nav_login','Masuk')) ?></a></p></div></section>
 
 <?php elseif ($page === 'change-password'): ?>
   <?php if (!$viewer): ?><section class="page-hero"><h1>Masuk diperlukan</h1><p>Masuk dulu untuk mengganti kata sandi.</p><a class="button button-primary" href="<?= e(app_url('login')) ?>">Masuk</a></section>
@@ -768,7 +801,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
 <?php endif; ?>
 </main>
 
-<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true"><?php if(site_val('logo_image','')!==''): ?><img class="brand-logo-image" src="<?= e(site_val('logo_image','')) ?>" alt=""><?php else: ?>◆<?php endif; ?></span><span><strong><?= e(site_val('village_brand_prefix','DESA')) ?></strong> <?= e(site_val('village_name','MAKASARI')) ?></span></a><p><?= nl2br(e(site_val('footer_summary','Layanan desa, kini lebih dekat.'))) ?><br><?= e(site_val('footer_tagline','Informasi publik dan pelayanan warga dalam satu tempat.')) ?></p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>"><?= e(site_val('nav_profile','Profil Desa')) ?></a><a href="<?= e(app_url('layanan')) ?>"><?= e(site_val('nav_services','Layanan Surat')) ?></a><a href="<?= e(app_url('pengaduan')) ?>"><?= e(site_val('nav_complaints','Pengaduan')) ?></a><a href="<?= e(app_url('track')) ?>"><?= e(site_val('tracking_title','Lacak Pengajuan')) ?></a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> <?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></span><span><?= e(site_val('footer_services','Pelayanan publik yang mudah, cepat, dan transparan.')) ?></span></div></footer>
+<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true"><?php if(site_image_val('logo_image','')!==''): ?><img class="brand-logo-image" src="<?= e(site_image_val('logo_image','')) ?>" alt=""><?php else: ?>◆<?php endif; ?></span><span><strong><?= e(site_val('village_brand_prefix','DESA')) ?></strong> <?= e(site_val('village_name','MAKASARI')) ?></span></a><p><?= nl2br(e(site_val('footer_summary','Layanan desa, kini lebih dekat.'))) ?><br><?= e(site_val('footer_tagline','Informasi publik dan pelayanan warga dalam satu tempat.')) ?></p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>"><?= e(site_val('nav_profile','Profil Desa')) ?></a><a href="<?= e(app_url('layanan')) ?>"><?= e(site_val('nav_services','Layanan Surat')) ?></a><a href="<?= e(app_url('pengaduan')) ?>"><?= e(site_val('nav_complaints','Pengaduan')) ?></a><a href="<?= e(app_url('track')) ?>"><?= e(site_val('tracking_title','Lacak Pengajuan')) ?></a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> <?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></span><span><?= e(site_val('footer_services','Pelayanan publik yang mudah, cepat, dan transparan.')) ?></span></div></footer>
 
 <nav class="mobile-drawer" id="mobile-drawer" hidden aria-label="Menu tambahan">
   <a href="<?= e(app_url('profil')) ?>"><?= e(site_val('nav_profile','Profil Desa')) ?></a><a href="<?= e(app_url('umkm')) ?>"><?= e(site_val('nav_umkm','UMKM & Wisata')) ?></a><a href="<?= e(app_url('peta')) ?>"><?= e(site_val('nav_map','Peta Desa')) ?></a><a href="<?= e(app_url('transparansi')) ?>"><?= e(site_val('nav_budget','Transparansi Anggaran')) ?></a><a href="<?= e(app_url('kontak')) ?>"><?= e(site_val('nav_contact','Kontak')) ?></a>
