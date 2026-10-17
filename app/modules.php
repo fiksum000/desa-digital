@@ -305,6 +305,19 @@ function module_handle_post(): void {
         $pdo = db();
         $user = require_login();
         switch ($action) {
+            case 'module_mark_notification_read': {
+                $user=module_require_role(['warga','rt','rw','petugas','admin_desa','kepala_desa']);
+                $notificationId=filter_input(INPUT_POST,'notification_id',FILTER_VALIDATE_INT);
+                if(!$notificationId) throw new RuntimeException('Notifikasi tidak valid.');
+                $stmt=$pdo->prepare('UPDATE user_notifications SET read_at=NOW() WHERE id=? AND user_id=? AND read_at IS NULL');
+                $stmt->execute([(int)$notificationId,(int)$user['id']]);
+                $wasUpdated=$stmt->rowCount()>0;
+                if($wasUpdated) module_audit_actor($user,'read','user_notifications',(int)$notificationId,null,['read'=>true]);
+                $returnPage=(string)($_POST['return_page'] ?? 'notifikasi');
+                if(!in_array($returnPage,['notifikasi','dashboard'],true)) $returnPage='notifikasi';
+                flash($wasUpdated?'Notifikasi ditandai sudah dibaca.':'Notifikasi sudah dibaca atau tidak tersedia.');
+                redirect_to($returnPage);
+            }
             case 'module_create_dusun': {
                 $user = module_require_role(['admin_desa']);
                 $name = trim((string)($_POST['name'] ?? ''));
@@ -734,6 +747,26 @@ function module_handle_post(): void {
                             $pdo->prepare('UPDATE residents SET rt_id=?,reviewed_by=?,reviewed_at=NOW() WHERE family_id=?')->execute([$target,(int)$user['id'],$familyId]);
                             $pdo->prepare('UPDATE resident_documents SET rt_id=? WHERE family_id=?')->execute([$target,$familyId]);
                             $pdo->prepare('UPDATE resident_documents SET rt_id=? WHERE resident_id IN (SELECT id FROM residents WHERE family_id=?)')->execute([$target,$familyId]);
+                            $targetRtUsers=$pdo->prepare("SELECT id FROM app_users WHERE role='rt' AND rt_id=? AND is_active=1 ORDER BY id");
+                            $targetRtUsers->execute([$target]);
+                            $targetRecipients=$targetRtUsers->fetchAll(PDO::FETCH_COLUMN);
+                            $notify=$pdo->prepare("INSERT INTO user_notifications (user_id,title,message,notification_type,entity_type,entity_id) VALUES (?,?,?,'data_change','resident_change_request',?)");
+                            foreach($targetRecipients as $recipientId) {
+                                $notify->execute([(int)$recipientId,'Perpindahan data diterima','Ada keluarga/warga baru di wilayah RT kamu setelah usulan pindah disetujui. Periksa menu Data Warga dan Dokumen Warga untuk menindaklanjuti kelengkapan dokumen.',(string)$id]);
+                            }
+                            if (!$targetRecipients) {
+                                $targetRwStmt=$pdo->prepare('SELECT rw_id FROM rt_units WHERE id=? LIMIT 1');
+                                $targetRwStmt->execute([$target]);
+                                $targetRwId=(int)$targetRwStmt->fetchColumn();
+                                if($targetRwId>0) {
+                                    $rwUsers=$pdo->prepare("SELECT id FROM app_users WHERE role='rw' AND rw_id=? AND is_active=1");
+                                    $rwUsers->execute([$targetRwId]);
+                                    $notifyRw=$pdo->prepare("INSERT INTO user_notifications (user_id,title,message,notification_type,entity_type,entity_id) VALUES (?,?,?,'data_change','resident_change_request',?)");
+                                    foreach($rwUsers->fetchAll(PDO::FETCH_COLUMN) as $recipientId) {
+                                        $notifyRw->execute([(int)$recipientId,'Perpindahan data menunggu pengurus RT','Data keluarga/warga telah dipindahkan ke wilayah RT yang belum memiliki akun Ketua RT aktif. Pastikan pengurus RT ditugaskan dan data warga diperiksa.',(string)$id]);
+                                    }
+                                }
+                            }
                         } elseif ($request['change_type']==='deceased') {
                             $pdo->prepare("UPDATE residents SET resident_status='deceased',reviewed_by=?,reviewed_at=NOW() WHERE id=?")
                                 ->execute([(int)$user['id'],(int)$resident['id']]);
