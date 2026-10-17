@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+putenv('APP_KEY=' . str_repeat('c', 64));
+require_once dirname(__DIR__) . '/app/bootstrap.php';
+
 $host = getenv('DB_HOST') ?: '127.0.0.1';
 $port = getenv('DB_PORT') ?: '3306';
 $name = getenv('DB_NAME') ?: 'desa_digital';
@@ -48,11 +51,26 @@ try {
     expect_true($rtUser && $rtUser['role']==='rt' && (int)$rtUser['rt_id']===$rtId && (int)$rtUser['must_change_password']===1, 'Role and RT assignment must persist');
     expect_true((int)$rtUser['session_version']===1, 'Initial session version must be present');
 
-    $pdo->prepare("INSERT INTO family_records (family_number,rt_id,address,status,created_by) VALUES (?,?,?,'pending_review',?)")
-        ->execute(['3201000000000001',$rtId,'Alamat CI',$rtUserId]);
+    $rawFamilyNumber = '3201000000000001';
+    $rawNik = '3201000000000002';
+    $familyMask = mask_private_identifier($rawFamilyNumber);
+    $familyCipher = encrypt_private_identifier($rawFamilyNumber);
+    $familyHash = private_identifier_hash($rawFamilyNumber);
+    $nikMask = mask_private_identifier($rawNik);
+    $nikCipher = encrypt_private_identifier($rawNik);
+    $nikHash = private_identifier_hash($rawNik);
+    $pdo->prepare("INSERT INTO family_records (family_number,family_number_cipher,family_number_hash,rt_id,address,status,created_by) VALUES (?,?,?, ?,?,'pending_review',?)")
+        ->execute([$familyMask,$familyCipher,$familyHash,$rtId,'Alamat CI',$rtUserId]);
     $familyId = (int)$pdo->lastInsertId();
-    $pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,full_name,birth_date,gender,resident_status,created_by) VALUES (?,?,?,?,?,'L','pending_review',?)")
-        ->execute([$familyId,$rtId,'3201000000000002','Penduduk CI','2000-01-01',$rtUserId]);
+    $pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,nik_cipher,nik_hash,full_name,birth_date,gender,resident_status,created_by) VALUES (?,?,?,?,?,?,?,'L','pending_review',?)")
+        ->execute([$familyId,$rtId,$nikMask,$nikCipher,$nikHash,'Penduduk CI','2000-01-01',$rtUserId]);
+    $storedIdentifiers = $pdo->prepare('SELECT f.family_number,f.family_number_cipher,f.family_number_hash,r.nik,r.nik_cipher,r.nik_hash FROM family_records f JOIN residents r ON r.family_id=f.id WHERE f.id=?');
+    $storedIdentifiers->execute([$familyId]);
+    $stored = $storedIdentifiers->fetch();
+    expect_true($stored && $stored['family_number']===$familyMask && $stored['nik']===$nikMask, 'Database must store masked identifiers, not cleartext.');
+    expect_true(decrypt_private_identifier($stored['family_number_cipher'])===$rawFamilyNumber, 'Family number ciphertext must decrypt with APP_KEY.');
+    expect_true(decrypt_private_identifier($stored['nik_cipher'])===$rawNik, 'NIK ciphertext must decrypt with APP_KEY.');
+    expect_true(hash_equals($stored['family_number_hash'],$familyHash) && hash_equals($stored['nik_hash'],$nikHash), 'HMAC indexes must match normalized identifiers.');
     $residentId = (int)$pdo->lastInsertId();
     $pdo->prepare('UPDATE family_records SET head_resident_id=? WHERE id=?')->execute([$residentId,$familyId]);
     $stmt=$pdo->prepare('SELECT r.id,f.head_resident_id FROM residents r JOIN family_records f ON f.id=r.family_id WHERE r.id=?');
@@ -61,8 +79,8 @@ try {
 
     $duplicateNikBlocked = false;
     try {
-        $pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,full_name,resident_status,created_by) VALUES (?,?,?,?, 'pending_review',?)")
-            ->execute([$familyId,$rtId,'3201000000000002','Duplicate NIK',$rtUserId]);
+        $pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,nik_cipher,nik_hash,full_name,resident_status,created_by) VALUES (?,?,?,?,?,?,'pending_review',?)")
+            ->execute([$familyId,$rtId,$nikMask,$nikCipher,$nikHash,'Duplicate NIK',$rtUserId]);
     } catch (PDOException $e) {
         $duplicateNikBlocked = (string)$e->getCode()==='23000';
     }
@@ -70,8 +88,8 @@ try {
 
     $duplicateKkBlocked = false;
     try {
-        $pdo->prepare("INSERT INTO family_records (family_number,rt_id,address,status,created_by) VALUES (?,?,?,'draft',?)")
-            ->execute(['3201000000000001',$rtId,'Alamat duplikat',$rtUserId]);
+        $pdo->prepare("INSERT INTO family_records (family_number,family_number_cipher,family_number_hash,rt_id,address,status,created_by) VALUES (?,?,?,? ,?,'draft',?)")
+            ->execute([$familyMask,$familyCipher,$familyHash,$rtId,'Alamat duplikat',$rtUserId]);
     } catch (PDOException $e) {
         $duplicateKkBlocked = (string)$e->getCode()==='23000';
     }
