@@ -23,6 +23,21 @@ $pdo->exec("CREATE TABLE IF NOT EXISTS auth_attempts (
     KEY idx_auth_attempt_lock (locked_until, window_started_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
+$pdo->exec("CREATE TABLE IF NOT EXISTS user_notifications (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    title VARCHAR(160) NOT NULL,
+    message VARCHAR(1000) NOT NULL,
+    notification_type VARCHAR(50) NOT NULL DEFAULT 'general',
+    entity_type VARCHAR(80) NULL,
+    entity_id VARCHAR(80) NULL,
+    read_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_notifications_inbox (user_id, read_at, created_at),
+    KEY idx_notifications_entity (entity_type, entity_id),
+    CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
 function migration_column_exists(PDO $pdo, string $table, string $column): bool {
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?');
     $stmt->execute([$table, $column]);
