@@ -21,6 +21,18 @@ foreach ([
     check_true(is_file($root . '/' . $relative), "Missing required file: {$relative}");
 }
 
+putenv('APP_KEY=' . str_repeat('a', 64));
+require_once $root . '/app/bootstrap.php';
+$rawNik = '3201000000000002';
+$encryptedNik = encrypt_private_identifier($rawNik);
+check_true($encryptedNik !== $rawNik, 'NIK harus disimpan dalam bentuk terenkripsi.');
+check_true(decrypt_private_identifier($encryptedNik) === $rawNik, 'NIK terenkripsi harus bisa dibuka hanya dengan APP_KEY yang sama.');
+check_true(mask_private_identifier($rawNik) === '************0002', 'NIK yang disimpan untuk tampilan hanya boleh berisi empat digit terakhir.');
+check_true(private_identifier_hash($rawNik) === private_identifier_hash($rawNik), 'HMAC NIK harus deterministik untuk pemeriksaan duplikasi.');
+putenv('APP_KEY=' . str_repeat('b', 64));
+check_true(decrypt_private_identifier($encryptedNik) === null, 'Ciphertext tidak boleh bisa dibuka dengan APP_KEY yang berbeda.');
+putenv('APP_KEY=' . str_repeat('a', 64));
+
 $schema = load_text('schema.sql');
 foreach ([
     'CREATE TABLE IF NOT EXISTS app_users',
@@ -37,7 +49,10 @@ foreach ([
     'CREATE TABLE IF NOT EXISTS site_content_revisions',
     'CREATE TABLE IF NOT EXISTS public_directory_items',
     'CREATE TABLE IF NOT EXISTS budget_reports',
-    'UNIQUE KEY uq_resident_nik'
+    'UNIQUE KEY uq_resident_nik_hash',
+    'UNIQUE KEY uq_family_number_hash',
+    'family_number_cipher TEXT NOT NULL',
+    'nik_cipher TEXT NOT NULL'
 ] as $needle) {
     check_true(str_contains($schema, $needle), "Database schema missing invariant: {$needle}");
 }
@@ -79,7 +94,11 @@ foreach ([
     "'httponly' => true",
     "'samesite' => 'Lax'",
     'hash_equals',
-    "hash_hmac('sha256'"
+    "hash_hmac('sha256'",
+    'function private_identifier_hash',
+    'function encrypt_private_identifier',
+    'function decrypt_private_identifier',
+    'function mask_private_identifier'
 ] as $needle) {
     check_true(str_contains($bootstrap, $needle), "Security bootstrap missing invariant: {$needle}");
 }
