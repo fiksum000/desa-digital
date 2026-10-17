@@ -418,6 +418,55 @@ function module_handle_post(): void {
                 module_audit_actor($user,'review_document','resident_documents',$id,['status'=>$before['status']],['status'=>$status,'note'=>$note]);
                 flash('Status dokumen diperbarui.'); redirect_to('dokumen');
             }
+            case 'module_publish_site_revision': {
+                $user = module_require_role(['admin_desa']);
+                $id=filter_input(INPUT_POST,'revision_id',FILTER_VALIDATE_INT);
+                if(!$id) throw new RuntimeException('Draf konten tidak valid.');
+                $stmt=$pdo->prepare("SELECT id,content_key,content_value,status FROM site_content_revisions WHERE id=? AND status='draft' LIMIT 1");
+                $stmt->execute([$id]);$revision=$stmt->fetch();
+                if(!$revision) throw new RuntimeException('Draf tidak ditemukan atau sudah diproses.');
+                $key=(string)$revision['content_key'];$value=(string)$revision['content_value'];
+                if($key==='map_public_url' && $value!=='' && (!filter_var($value,FILTER_VALIDATE_URL) || parse_url($value,PHP_URL_SCHEME)!=='https')) throw new RuntimeException('Tautan peta draf tidak valid. Simpan ulang menggunakan URL HTTPS.');
+                if($key==='hero_image' && !($value==='assets/village-hero.svg' || preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#',$value))) throw new RuntimeException('Foto hero draf tidak menunjuk ke berkas gambar yang diizinkan.');
+                $pdo->beginTransaction();
+                $stmt=$pdo->prepare('SELECT id,content_value,value_type FROM site_content WHERE content_key=? LIMIT 1');
+                $stmt->execute([$key]);$current=$stmt->fetch();
+                $type=$key==='hero_image'?'image':'text';
+                if($current) {
+                    $pdo->prepare('INSERT INTO site_content_versions (content_id,content_value,editor_id) VALUES (?,?,?)')->execute([(int)$current['id'],(string)$current['content_value'],(int)$user['id']]);
+                    $pdo->prepare("UPDATE site_content SET content_value=?,value_type=?,status='published',updated_by=? WHERE id=?")->execute([$value,$type,(int)$user['id'],(int)$current['id']]);
+                } else {
+                    $pdo->prepare("INSERT INTO site_content (content_key,content_value,value_type,status,updated_by) VALUES (?,?,?,'published',?)")->execute([$key,$value,$type,(int)$user['id']]);
+                }
+                $pdo->prepare("UPDATE site_content_revisions SET status='archived' WHERE content_key=? AND status='published'")->execute([$key]);
+                $pdo->prepare("UPDATE site_content_revisions SET status='published',published_at=NOW() WHERE id=? AND status='draft'")->execute([(int)$id]);
+                module_audit_actor($user,'publish_draft','site_content_revisions',(int)$id,['status'=>'draft'],['status'=>'published','content_key'=>$key]);
+                $pdo->commit();
+                flash('Draf '. $key .' berhasil diterbitkan ke website publik.');
+                redirect_to('admin-site');
+            }
+            case 'module_restore_site_version': {
+                $user = module_require_role(['admin_desa']);
+                $id=filter_input(INPUT_POST,'version_id',FILTER_VALIDATE_INT);
+                if(!$id) throw new RuntimeException('Versi konten tidak valid.');
+                $stmt=$pdo->prepare('SELECT v.id,v.content_id,v.content_value,sc.content_key,sc.value_type FROM site_content_versions v JOIN site_content sc ON sc.id=v.content_id WHERE v.id=? LIMIT 1');
+                $stmt->execute([$id]);$version=$stmt->fetch();
+                if(!$version) throw new RuntimeException('Versi lama tidak ditemukan.');
+                $key=(string)$version['content_key'];$value=(string)$version['content_value'];
+                if($key==='map_public_url' && $value!=='' && (!filter_var($value,FILTER_VALIDATE_URL) || parse_url($value,PHP_URL_SCHEME)!=='https')) throw new RuntimeException('Versi lama berisi tautan peta yang tidak valid. Pulihkan melalui editor setelah memperbaikinya.');
+                if($key==='hero_image' && !($value==='assets/village-hero.svg' || preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#',$value))) throw new RuntimeException('Versi foto tidak menunjuk ke berkas gambar yang diizinkan.');
+                $pdo->beginTransaction();
+                $currentStmt=$pdo->prepare('SELECT content_value FROM site_content WHERE id=? LIMIT 1');
+                $currentStmt->execute([(int)$version['content_id']]);$currentValue=(string)$currentStmt->fetchColumn();
+                $pdo->prepare('INSERT INTO site_content_versions (content_id,content_value,editor_id) VALUES (?,?,?)')->execute([(int)$version['content_id'],$currentValue,(int)$user['id']]);
+                $pdo->prepare("UPDATE site_content SET content_value=?,status='published',updated_by=? WHERE id=?")->execute([$value,(int)$user['id'],(int)$version['content_id']]);
+                $pdo->prepare("UPDATE site_content_revisions SET status='archived' WHERE content_key=? AND status='published'")->execute([$key]);
+                $pdo->prepare("INSERT INTO site_content_revisions (content_key,content_value,status,editor_id,published_at) VALUES (?,?,'published',?,NOW())")->execute([$key,$value,(int)$user['id']]);
+                module_audit_actor($user,'restore_version','site_content_versions',(int)$id,['content_key'=>$key],['restored_version_id'=>(int)$id]);
+                $pdo->commit();
+                flash('Versi lama untuk '. $key .' berhasil dipulihkan dan diterbitkan.');
+                redirect_to('admin-site');
+            }
             case 'module_save_site': {
                 $user = module_require_role(['admin_desa']);
                 $fields=[
@@ -582,7 +631,7 @@ function module_handle_post(): void {
             'module_save_resident_family','module_add_resident' => 'rt-data',
             'module_submit_change','module_resubmit_change','module_review_change','module_review_resident' => 'perubahan',
             'module_upload_document','module_review_document' => 'dokumen',
-            'module_save_site' => 'admin-site',
+            'module_save_site','module_publish_site_revision','module_restore_site_version' => 'admin-site',
             'module_save_service' => 'admin-services',
             'module_save_directory' => 'admin-directory',
             'module_save_budget' => 'admin-budget',
