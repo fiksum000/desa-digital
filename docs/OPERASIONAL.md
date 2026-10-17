@@ -14,12 +14,13 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 ## Persiapan lingkungan
 
 1. Salin `.env.example` menjadi `.env`.
-2. Buat nilai acak yang kuat untuk `APP_KEY`, `DB_PASSWORD`, dan `DB_ROOT_PASSWORD`. Jangan gunakan contoh atau sandi yang sama.
-3. Untuk akses melalui HTTPS, atur `SESSION_SECURE_COOKIE=true` setelah TLS diaktifkan di reverse proxy.
-4. Jalankan `docker compose up -d --build`.
-5. Periksa `docker compose ps` dan `docker compose logs --tail=100 web db`.
-6. Buat akun admin awal melalui terminal trusted container menggunakan `php bin/create_admin.php <username> "<Nama Admin>" '<sandi-panjang>'`. Hindari menuliskan sandi asli di riwayat shell; gunakan mekanisme secret management yang sesuai pada server.
-7. Buka halaman melalui port lokal yang dipilih. Jangan buka port database ke internet.
+2. Buat nilai acak yang kuat untuk `APP_KEY`, `DB_PASSWORD`, dan `DB_ROOT_PASSWORD`. Untuk APP_KEY, jalankan `openssl rand -hex 32` lalu salin hasil 64 karakter heksadesimal ke `.env`. Buat kedua sandi database secara terpisah; jangan gunakan contoh atau sandi yang sama.
+3. **Jangan kehilangan atau mengganti APP_KEY setelah data warga masuk.** Kunci ini dipakai untuk mengenkripsi NIK/KK dan membuat HMAC pencarian duplikasi. Simpan cadangan kunci secara terenkripsi dan terpisah dari backup database.
+4. Untuk akses melalui HTTPS, atur `SESSION_SECURE_COOKIE=true` setelah TLS diaktifkan di reverse proxy.
+5. Jalankan `docker compose up -d --build`.
+6. Periksa `docker compose ps` dan `docker compose logs --tail=100 web db`.
+7. Buat akun admin awal melalui terminal trusted container menggunakan `php bin/create_admin.php <username> \"<Nama Admin>\" '<sandi-panjang>'`. Hindari menuliskan sandi asli di riwayat shell; gunakan mekanisme secret management yang sesuai pada server.
+8. Buka halaman melalui port lokal yang dipilih. Jangan buka port database ke internet.
 
 ## Keamanan sebelum publik
 
@@ -34,7 +35,9 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 
 ## Catatan data pribadi
 
-Jangan pernah commit file .env, salinan database, NIK/KK, foto identitas, atau berkas warga ke GitHub. Semua lampiran warga wajib berada di penyimpanan privat dengan otorisasi per permintaan. Isi database dummy hanya boleh dipakai untuk pengujian.
+NIK dan nomor KK disimpan sebagai ciphertext yang dienkripsi dengan secretbox libsodium. Kolom yang dipakai pada daftar hanya berisi topeng `************1234`; HMAC berkunci dipakai untuk deteksi duplikasi dan indeks unik tanpa menyimpan nilai asli sebagai kolom pencarian. `APP_KEY` tidak dapat dipulihkan dari database; simpan salinan terenkripsi yang aksesnya sangat terbatas.
+
+Jika database lama sudah dibuat dari skema yang menyimpan NIK/KK sebagai teks biasa, ambil backup database dan APP_KEY terlebih dahulu lalu jalankan `php bin/migrate_private_identifiers.php` dari container web yang dipercaya setelah APP_KEY diatur dengan benar. Skrip berhenti jika kunci salah, data tidak bisa dinormalisasi, atau ditemukan duplikasi; jangan melewati error migrasi dengan mengubah data secara manual. Jangan pernah commit file .env, salinan database, NIK/KK, foto identitas, atau berkas warga ke GitHub. Semua lampiran warga wajib berada di penyimpanan privat dengan otorisasi per permintaan. Isi database dummy hanya boleh dipakai untuk pengujian.
 
 ## Pembaruan dari GitHub
 
