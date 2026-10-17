@@ -48,7 +48,7 @@ function smoke_assert(bool $ok, string $message): void {
 }
 
 $page = (string)($argv[1] ?? 'rt-data');
-if (!in_array($page, ['rt-data','dokumen'], true)) {
+if (!in_array($page, ['rt-data','dokumen','notifikasi'], true)) {
     fwrite(STDERR, "Unsupported page smoke target.\n");
     exit(2);
 }
@@ -67,6 +67,8 @@ try {
     $pdo->prepare("INSERT INTO app_users (username,full_name,password_hash,role,rt_id,is_active,must_change_password,session_version) VALUES (?,?,?,'rt',?,1,0,1)")
         ->execute([$username, 'CI Smoke RT', password_hash(bin2hex(random_bytes(20)), PASSWORD_DEFAULT), $rtId]);
     $userId = (int)$pdo->lastInsertId();
+    $pdo->prepare("INSERT INTO user_notifications (user_id,title,message,notification_type,entity_type,entity_id) VALUES (?,?,?,'data_change','resident_change_request',?)")
+        ->execute([$userId,'CI Smoke Notification','Synthetic notification for the authenticated inbox test.','CI-' . $tag]);
 
     $kk = fixture_digits($pdo);
     $nik = fixture_digits($pdo);
@@ -87,6 +89,7 @@ try {
     ];
     $_GET = ['page'=>$page];
     if ($page === 'rt-data') $_GET['q'] = 'CI Smoke Resident';
+    if ($page === 'notifikasi') $_GET['page'] = 'notifikasi';
     if ($page === 'dokumen') {
         $_GET['q'] = '1234';
         $_GET['status'] = 'approved';
@@ -104,6 +107,10 @@ try {
         smoke_assert(str_contains($html, 'CI Smoke Resident ' . $tag), 'Resident search did not return the synthetic resident.');
         smoke_assert(str_contains($html, 'KTP belum disetujui'), 'The incomplete-record queue did not flag a missing approved KTP.');
         smoke_assert(str_contains($html, 'KK keluarga belum disetujui'), 'The incomplete-record queue did not flag a missing approved KK.');
+    } elseif ($page === 'notifikasi') {
+        smoke_assert(str_contains($html, 'Kotak masuk'), 'Notification inbox did not render.');
+        smoke_assert(str_contains($html, 'CI Smoke Notification'), 'Recipient notification was not shown in the inbox.');
+        smoke_assert(str_contains($html, 'Belum dibaca'), 'Unread notification state was not rendered.');
     } else {
         smoke_assert(str_contains($html, 'Arsip dokumen &amp; antrean pemeriksaan') || str_contains($html, 'Arsip dokumen & antrean pemeriksaan'), 'Private document archive did not render.');
         smoke_assert(str_contains($html, 'Cari dokumen'), 'Document search controls did not render.');
@@ -123,6 +130,7 @@ try {
                 $pdo->prepare('DELETE FROM residents WHERE id=?')->execute([$residentId]);
             }
             if ($familyId) $pdo->prepare('DELETE FROM family_records WHERE id=?')->execute([$familyId]);
+            if ($userId) $pdo->prepare('DELETE FROM user_notifications WHERE user_id=?')->execute([$userId]);
             if ($userId) $pdo->prepare('DELETE FROM app_users WHERE id=?')->execute([$userId]);
             if ($rtId) $pdo->prepare('DELETE FROM rt_units WHERE id=?')->execute([$rtId]);
             if ($rwId) $pdo->prepare('DELETE FROM rw_units WHERE id=?')->execute([$rwId]);
