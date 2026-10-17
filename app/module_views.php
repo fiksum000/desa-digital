@@ -139,8 +139,9 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         elseif($role==='rw') {$where=' WHERE rt.rw_id=?';$params[]=(int)$mvUser['rw_id'];}
         $search=trim((string)($_GET['q'] ?? ''));
         if($search!=='') {
-            $where .= ($where?' AND ':' WHERE ').'(r.full_name LIKE ? OR RIGHT(r.nik,4)=? OR f.family_number LIKE ?)';
-            $params[]='%'.$search.'%';$params[]=$search;$params[]='%'.$search.'%';
+            $searchTail = preg_match('/^[0-9]{4,16}$/', $search) ? substr($search, -4) : $search;
+            $where .= ($where?' AND ':' WHERE ').'(r.full_name LIKE ? OR RIGHT(r.nik,4)=? OR RIGHT(f.family_number,4)=?)';
+            $params[]='%'.$search.'%';$params[]=$searchTail;$params[]=$searchTail;
         }
         $stmt=$dbx->prepare("SELECT r.id,r.family_id,r.rt_id,r.full_name,RIGHT(r.nik,4) AS nik_last4,r.gender,r.birth_date,r.relationship_to_head,r.resident_status,r.created_at,f.family_number,f.status AS family_status,rt.number_code AS rt_code,rw.number_code AS rw_code,d.name AS dusun_name FROM residents r JOIN family_records f ON f.id=r.family_id JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id{$where} ORDER BY r.created_at DESC LIMIT 100");
         $stmt->execute($params);$residents=$stmt->fetchAll();
