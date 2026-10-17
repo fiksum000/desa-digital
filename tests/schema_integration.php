@@ -4,16 +4,7 @@ declare(strict_types=1);
 putenv('APP_KEY=' . str_repeat('c', 64));
 require_once dirname(__DIR__) . '/app/bootstrap.php';
 
-$host = getenv('DB_HOST') ?: '127.0.0.1';
-$port = getenv('DB_PORT') ?: '3306';
-$name = getenv('DB_NAME') ?: 'desa_digital';
-$user = getenv('DB_USER') ?: 'ci_app';
-$pass = getenv('DB_PASSWORD') ?: 'ci-app-pass';
-$pdo = new PDO("mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4", $user, $pass, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES => false,
-]);
+$pdo = db(); // Use the same connection the application uses so row locks and snapshots are tested faithfully.
 
 $checks = 0;
 function expect_true(bool $condition, string $message): void {
@@ -140,6 +131,36 @@ try {
     $stmt=$pdo->prepare('SELECT r.id,f.head_resident_id FROM residents r JOIN family_records f ON f.id=r.family_id WHERE r.id=?');
     $stmt->execute([$residentId]); $familyHead=$stmt->fetch();
     expect_true($familyHead && (int)$familyHead['head_resident_id']===$residentId, 'Family head relationship must be storable');
+
+    $sourceSnapshot = module_change_snapshot($residentId,$familyId,'update',false);
+    $requestForSnapshot = [
+        'resident_id'=>$residentId,
+        'family_id'=>$familyId,
+        'change_type'=>'update',
+        'source_snapshot'=>json_encode($sourceSnapshot,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),
+    ];
+    expect_true(module_change_snapshot_matches($requestForSnapshot), 'An unchanged resident and household snapshot must be approved by the conflict checker.');
+
+    $pdo->prepare('UPDATE residents SET phone=? WHERE id=?')->execute(['555-0101',$residentId]);
+    expect_true(!module_change_snapshot_matches($requestForSnapshot), 'A changed resident field must put the request into conflict instead of overwriting it.');
+    $pdo->prepare('UPDATE residents SET phone=NULL WHERE id=?')->execute([$residentId]);
+
+    $moveSnapshot = module_change_snapshot($residentId,$familyId,'move_rt',false);
+    $moveRequestForSnapshot = [
+        'resident_id'=>$residentId,
+        'family_id'=>$familyId,
+        'change_type'=>'move_rt',
+        'source_snapshot'=>json_encode($moveSnapshot,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),
+    ];
+    $siblingNik='3201000000000003';
+    $siblingNikHash=private_identifier_hash($siblingNik);
+    $siblingNikCipher=encrypt_private_identifier($siblingNik);
+    $siblingNikMask=mask_private_identifier($siblingNik);
+    $pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,nik_cipher,nik_hash,full_name,gender,resident_status,created_by) VALUES (?,?,?,?,?,?,'P','pending_review',?)")
+        ->execute([$familyId,$rtId,$siblingNikMask,$siblingNikCipher,$siblingNikHash,'Anggota CI',$rtUserId]);
+    $siblingId=(int)$pdo->lastInsertId();
+    expect_true(!module_change_snapshot_matches($moveRequestForSnapshot), 'Adding another household member must mark a move request as conflicted.');
+    $pdo->prepare('DELETE FROM residents WHERE id=?')->execute([$siblingId]);
 
     $duplicateNikBlocked = false;
     try {
