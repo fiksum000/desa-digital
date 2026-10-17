@@ -60,7 +60,7 @@ migration_add_column($pdo, 'resident_change_requests', 'source_snapshot', 'JSON 
 // Expand the enum before marking older pending requests as conflicts. Existing requests
 // without a source snapshot cannot be safely auto-approved after a code upgrade.
 $pdo->exec("ALTER TABLE resident_change_requests MODIFY status ENUM('draft','submitted','in_review','revision_requested','conflict','approved','rejected') NOT NULL DEFAULT 'draft'");
-$pdo->exec("UPDATE resident_change_requests SET status='conflict', review_note=CONCAT('[KONFLIK] Snapshot sumber belum ada setelah pembaruan. Admin Desa harus membandingkan data terkini sebelum meminta revisi.'), reviewed_at=NOW() WHERE source_snapshot IS NULL AND status IN ('submitted','in_review','revision_requested')");
+$pdo->exec("UPDATE resident_change_requests SET status='conflict', review_note=CONCAT('[KONFLIK] Snapshot sumber belum ada setelah pembaruan. Admin Desa harus membandingkan data terkini sebelum meminta revisi.', IF(review_note IS NULL OR review_note='', '', CONCAT(' | Catatan sebelumnya: ', review_note))), reviewed_at=NOW() WHERE source_snapshot IS NULL AND status IN ('submitted','in_review','revision_requested')");
 
 foreach ([
     ['family_records', 'uq_family_number'],
