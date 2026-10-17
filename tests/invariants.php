@@ -31,6 +31,8 @@ check_true(decrypt_private_identifier($encryptedNik) === $rawNik, 'NIK terenkrip
 check_true(role_label('owner') === 'Owner', 'The Owner role must have a dedicated display label.');
 check_true(can_manage_content(['role'=>'owner']), 'Owner must have top-level content management access.');
 check_true(can_process_requests(['role'=>'owner']), 'Owner must have top-level request processing access.');
+check_true(str_contains(load_text('app/modules.php'), "case 'module_create_admin_account':") && str_contains(load_text('app/modules.php'), "module_require_role(['owner'])"), 'Only Owner may create Admin Desa accounts.');
+check_true(str_contains(load_text('app/module_views.php'), 'Buat akun Admin Desa') && str_contains(load_text('app/module_views.php'), "'rt-data' => ['rt','admin_desa','owner','petugas']"), 'Owner dashboard shortcuts must lead to authorized admin modules.');
 check_true(mask_private_identifier($rawNik) === '************0002', 'NIK yang disimpan untuk tampilan hanya boleh berisi empat digit terakhir.');
 check_true(private_identifier_hash($rawNik) === private_identifier_hash($rawNik), 'HMAC NIK harus deterministik untuk pemeriksaan duplikasi.');
 $filePolicy = ['applicant_id' => 42];
