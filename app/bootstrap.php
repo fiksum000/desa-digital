@@ -82,6 +82,73 @@ function mask_private_identifier(string $value): string {
     return str_repeat('*', 12) . substr($digits, -4);
 }
 
+function auth_rate_limit_keys(string $username): array {
+    $key = private_identifier_key('authentication-rate-limit');
+    $ip = trim((string)($_SERVER['REMOTE_ADDR'] ?? 'unknown'));
+    if ($ip === '') $ip = 'unknown';
+    return [
+        'account' => hash_hmac('sha256', "account\0" . strtolower(trim($username)), $key),
+        'ip' => hash_hmac('sha256', "ip\0" . $ip, $key),
+    ];
+}
+
+function auth_rate_limit_assert_allowed(string $username): void {
+    $keys = auth_rate_limit_keys($username);
+    $now = time();
+    $stmt = db()->prepare('SELECT bucket_type,attempts,window_started_at,locked_until FROM auth_attempts WHERE bucket_hash=? LIMIT 1');
+    foreach ($keys as $type => $hash) {
+        $stmt->execute([$hash]);
+        $row = $stmt->fetch();
+        if (!$row) continue;
+        $limit = $type === 'account' ? 5 : 20;
+        $windowStart = strtotime((string)$row['window_started_at']) ?: 0;
+        $lockUntil = !empty($row['locked_until']) ? (strtotime((string)$row['locked_until']) ?: 0) : 0;
+        if ($lockUntil > $now || ((int)$row['attempts'] >= $limit && $windowStart > $now - 600)) {
+            throw new RuntimeException('Terlalu banyak percobaan masuk dari akun atau jaringan ini. Tunggu 10 menit lalu coba kembali.');
+        }
+    }
+}
+
+function auth_rate_limit_record_failure(string $username): void {
+    $keys = auth_rate_limit_keys($username);
+    // Sort keys to keep row lock order deterministic and reduce deadlock risk.
+    asort($keys, SORT_STRING);
+    $pdo = db();
+    $now = time();
+    $pdo->beginTransaction();
+    try {
+        $insert = $pdo->prepare('INSERT IGNORE INTO auth_attempts (bucket_hash,bucket_type,attempts,window_started_at,locked_until) VALUES (?,?,0,NOW(),NULL)');
+        $select = $pdo->prepare('SELECT attempts,window_started_at,locked_until FROM auth_attempts WHERE bucket_hash=? FOR UPDATE');
+        $update = $pdo->prepare('UPDATE auth_attempts SET attempts=?,window_started_at=?,locked_until=?,updated_at=NOW() WHERE bucket_hash=?');
+        foreach ($keys as $type => $hash) {
+            $insert->execute([$hash,$type]);
+            $select->execute([$hash]);
+            $row = $select->fetch();
+            if (!$row) throw new RuntimeException('Pembatasan percobaan login tidak dapat diperbarui.');
+            $windowStart = strtotime((string)$row['window_started_at']) ?: 0;
+            $lockUntil = !empty($row['locked_until']) ? (strtotime((string)$row['locked_until']) ?: 0) : 0;
+            $attempts = (int)$row['attempts'];
+            if ($windowStart <= $now - 600 || ($lockUntil > 0 && $lockUntil <= $now)) {
+                $attempts = 0;
+                $windowStart = $now;
+            }
+            $attempts++;
+            $limit = $type === 'account' ? 5 : 20;
+            $locked = $attempts >= $limit ? date('Y-m-d H:i:s', $now + 600) : null;
+            $update->execute([$attempts,date('Y-m-d H:i:s',$windowStart),$locked,$hash]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
+function auth_rate_limit_clear_account(string $username): void {
+    $keys = auth_rate_limit_keys($username);
+    db()->prepare("DELETE FROM auth_attempts WHERE bucket_hash=? AND bucket_type='account'")->execute([$keys['account']]);
+}
+
 function e(?string $value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
