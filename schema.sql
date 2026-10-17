@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS service_requests (
   approved_by BIGINT UNSIGNED NULL,
   approved_at DATETIME NULL,
   letter_number VARCHAR(100) NULL,
+  letter_snapshot JSON NULL,
   letter_issued_by BIGINT UNSIGNED NULL,
   letter_issued_at DATETIME NULL,
   completed_at DATETIME NULL,
