@@ -29,10 +29,10 @@ $pdo = new PDO("mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4",
 $role = (string)($argv[1] ?? '');
 $page = (string)($argv[2] ?? 'dashboard');
 $allowed = [
-    'admin_desa' => ['dashboard','admin-resident-export','admin-site'],
-    'owner' => ['dashboard','admin-users','admin-resident-export','admin-site'],
-    // CMS authorization regression: a normal resident must never see its settings or upload controls.
-    'warga' => ['admin-site'],
+    'admin_desa' => ['dashboard','admin-resident-export','admin-site','admin-audit'],
+    'owner' => ['dashboard','admin-users','admin-resident-export','admin-site','admin-audit'],
+    // Authorization regressions: residents must never see CMS or audit log content.
+    'warga' => ['admin-site','admin-audit'],
 ];
 if (!isset($allowed[$role]) || !in_array($page, $allowed[$role], true)) {
     fwrite(STDERR, "Unsupported dashboard smoke target.\n");
@@ -81,6 +81,19 @@ try {
     } elseif ($page === 'admin-resident-export') {
         if (!str_contains($html, 'Siapkan ekspor') || !str_contains($html, 'resident-export-scope')) {
             throw new RuntimeException('Initial resident-export request did not render its filter form.');
+        }
+    } elseif ($page === 'admin-audit' && $role === 'warga') {
+        if (!str_contains($html, 'Akses terbatas') || str_contains($html, 'Cari aktivitas') || str_contains($html, '<th>Pelaku</th>')) {
+            throw new RuntimeException('Resident role must be denied the audit viewer and its activity records.');
+        }
+    } elseif ($page === 'admin-audit') {
+        foreach (['Log Aktivitas','Cari aktivitas','Tindakan','Jenis data','ID objek','Ditemukan'] as $needle) {
+            if (!str_contains($html, $needle)) {
+                throw new RuntimeException('Audit log viewer is missing safe activity metadata or search controls: ' . $needle);
+            }
+        }
+        if (str_contains($html, '<th>Detail perubahan</th>') || str_contains($html, 'name="before_data"')) {
+            throw new RuntimeException('Audit viewer must not render raw before/after payloads.');
         }
     } elseif ($page === 'admin-site' && $role === 'warga') {
         if (!str_contains($html, 'Akses terbatas') || str_contains($html, 'data-site-setting-filter') || str_contains($html, 'name="hero_image"')) {
