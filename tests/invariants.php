@@ -119,7 +119,7 @@ foreach ([
 
 $style = load_text('assets/style.css');
 foreach ([
-    'Mobile hero composition aligned to DESA DIGITAL reference',
+    'Mobile hero composition aligned to DESA MAKASARI reference',
     '.hero-visual{position:absolute;inset:0',
     '.hero-copy{position:relative;z-index:2',
     '.benefits,.welcome-card,.slider-dots{display:none}',

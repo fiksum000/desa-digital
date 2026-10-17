@@ -190,7 +190,7 @@ try {
     }
 } catch (Throwable $exception) {
     $dbAvailable = false;
-    error_log('DESA DIGITAL database unavailable.');
+    error_log('DESA MAKASARI database unavailable.');
     $services = [
         ['id'=>0,'name'=>'Layanan Surat','slug'=>'layanan-surat','description'=>'Ajukan surat keterangan dengan mudah dan cepat.','requirements'=>null,'estimated_days'=>null],
         ['id'=>0,'name'=>'Pengaduan Warga','slug'=>'pengaduan-warga','description'=>'Sampaikan aspirasi, keluhan, atau laporan Anda.','requirements'=>null,'estimated_days'=>null],
@@ -475,7 +475,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } catch (Throwable $exception) {
         if ($exception instanceof PDOException) {
-            error_log('DESA DIGITAL database operation failed.');
+            error_log('DESA MAKASARI database operation failed.');
             $message = 'Data belum dapat disimpan. Periksa isian atau hubungi admin desa.';
         } else {
             $message = $exception->getMessage();
@@ -519,12 +519,12 @@ try {
     }
 } catch (Throwable $exception) {
     $dbAvailable = false;
-    error_log('DESA DIGITAL could not load requested data.');
+    error_log('DESA MAKASARI could not load requested data.');
 }
 
 $flashMessage = take_flash();
 $pageTitles = ['home'=>'Beranda','layanan'=>'Layanan Desa','pengaduan'=>'Pengaduan Warga','track'=>'Lacak Pengajuan','berita'=>'Berita & Pengumuman','article'=>'Berita','profil'=>'Profil Desa','login'=>'Masuk','register'=>'Daftar Akun','dashboard'=>'Dashboard Saya','change-password'=>'Ganti Kata Sandi','admin'=>'Panel Pengelolaan'];
-$title = $pageTitles[$page] ?? 'DESA DIGITAL';
+$title = $pageTitles[$page] ?? 'DESA MAKASARI';
 ?>
 <!doctype html>
 <html lang="id">
@@ -533,14 +533,14 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#075b46">
   <meta name="description" content="Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.">
-  <title><?= e($title) ?> · DESA DIGITAL</title>
+  <title><?= e($title) ?> · DESA MAKASARI</title>
   <link rel="stylesheet" href="assets/style.css?v=1">
 </head>
 <body>
 <header class="site-header">
-  <a class="brand" href="<?= e(app_url('home')) ?>" aria-label="DESA DIGITAL - Beranda">
+  <a class="brand" href="<?= e(app_url('home')) ?>" aria-label="DESA MAKASARI - Beranda">
     <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M5 31 27 4h9L14 36H5z" fill="#77b84a"/><path d="M31 4h5v14c0 10-7 18-18 18h-4z" fill="#07634e"/><path d="M5 31 27 4" stroke="#e8f4d7" stroke-width="1.3"/></svg></span>
-    <span><strong>DESA</strong> DIGITAL</span>
+    <span><strong>DESA</strong> MAKASARI</span>
   </a>
   <nav class="main-nav" aria-label="Navigasi utama">
     <a class="<?= $page==='home'?'active':'' ?>" href="<?= e(app_url('home')) ?>">Beranda</a>
@@ -671,7 +671,7 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
   <section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2>Profil & sejarah</h2><p><?= e(site_val('profil_sejarah','Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.')) ?></p></div><div class="panel"><span class="profile-icon">♧</span><h2>Potensi desa</h2><p><?= e(site_val('profil_potensi','UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.')) ?></p></div><div class="panel"><span class="profile-icon">✉</span><h2>Kontak kantor</h2><p>Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.</p></div></section>
 
 <?php elseif ($page === 'login'): ?>
-  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Selamat datang kembali</span><h1>Masuk ke<br><em>DESA DIGITAL</em></h1><p>Akses layanan warga atau panel kerja sesuai peran akun kamu.</p><img src="assets/village-hero.webp" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Masuk</h2><p class="muted">Gunakan username dan kata sandi yang terdaftar.</p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label>Username<input name="username" autocomplete="username" required maxlength="80"></label><label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit">Masuk →</button></form><p class="auth-foot">Belum punya akun warga? <a href="<?= e(app_url('register')) ?>">Daftar di sini</a></p></div></section>
+  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Selamat datang kembali</span><h1>Masuk ke<br><em>DESA MAKASARI</em></h1><p>Akses layanan warga atau panel kerja sesuai peran akun kamu.</p><img src="assets/village-hero.webp" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Masuk</h2><p class="muted">Gunakan username dan kata sandi yang terdaftar.</p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label>Username<input name="username" autocomplete="username" required maxlength="80"></label><label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit">Masuk →</button></form><p class="auth-foot">Belum punya akun warga? <a href="<?= e(app_url('register')) ?>">Daftar di sini</a></p></div></section>
 
 <?php elseif ($page === 'register'): ?>
   <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Akun warga</span><h1>Layanan desa,<br><em>lebih dekat.</em></h1><p>Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.</p><img src="assets/village-hero.webp" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Daftar akun warga</h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="register"><label>Nama lengkap<input name="full_name" autocomplete="name" required maxlength="160"></label><label>Username<input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{4,80}" required minlength="4" maxlength="80"></label><label>Email (opsional)<input type="email" name="email" autocomplete="email" maxlength="190"></label><label>Kata sandi<input type="password" name="password" autocomplete="new-password" required minlength="12"><small>Minimal 12 karakter.</small></label><button class="button button-primary button-full" type="submit">Buat akun →</button></form><p class="auth-foot">Sudah punya akun? <a href="<?= e(app_url('login')) ?>">Masuk</a></p></div></section>
@@ -714,11 +714,11 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
 <?php elseif (in_array($page, ['rt-data','rw-rekap','dokumen','perubahan','admin-users','admin-wilayah','admin-site','admin-services','admin-directory','admin-budget','laporan','notifikasi','umkm','peta','transparansi','kontak'], true)): ?>
   <?php require __DIR__ . '/app/module_views.php'; ?>
 <?php else: ?>
-  <section class="page-hero"><span class="eyebrow">DESA DIGITAL</span><h1>Halaman tidak ditemukan</h1><p>Alamat yang kamu buka tidak tersedia.</p><a class="button button-primary" href="<?= e(app_url('home')) ?>">Kembali ke beranda</a></section>
+  <section class="page-hero"><span class="eyebrow">DESA MAKASARI</span><h1>Halaman tidak ditemukan</h1><p>Alamat yang kamu buka tidak tersedia.</p><a class="button button-primary" href="<?= e(app_url('home')) ?>">Kembali ke beranda</a></section>
 <?php endif; ?>
 </main>
 
-<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true">◆</span><span><strong>DESA</strong> DIGITAL</span></a><p>Layanan desa, kini lebih dekat.<br>Informasi publik dan pelayanan warga dalam satu tempat.</p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('layanan')) ?>">Layanan Surat</a><a href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a><a href="<?= e(app_url('track')) ?>">Lacak Pengajuan</a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> DESA DIGITAL</span><span>Pelayanan publik yang mudah, cepat, dan transparan.</span></div></footer>
+<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true">◆</span><span><strong>DESA</strong> MAKASARI</span></a><p>Layanan desa, kini lebih dekat.<br>Informasi publik dan pelayanan warga dalam satu tempat.</p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('layanan')) ?>">Layanan Surat</a><a href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a><a href="<?= e(app_url('track')) ?>">Lacak Pengajuan</a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> DESA MAKASARI</span><span>Pelayanan publik yang mudah, cepat, dan transparan.</span></div></footer>
 
 <nav class="mobile-drawer" id="mobile-drawer" hidden aria-label="Menu tambahan">
   <a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('umkm')) ?>">UMKM & Wisata</a><a href="<?= e(app_url('peta')) ?>">Peta Desa</a><a href="<?= e(app_url('transparansi')) ?>">Transparansi Anggaran</a><a href="<?= e(app_url('kontak')) ?>">Kontak</a>
