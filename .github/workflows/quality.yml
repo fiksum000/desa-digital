@@ -73,3 +73,12 @@ jobs:
           done
           test -s /tmp/desa-digital-home.html
           grep -F 'Layanan desa,' /tmp/desa-digital-home.html
+          # Guard the main visual sections from accidental removal during UI changes.
+          grep -F 'Ajukan Surat' /tmp/desa-digital-home.html
+          grep -F 'Lacak Pengajuan' /tmp/desa-digital-home.html
+          grep -F 'Layanan Surat' /tmp/desa-digital-home.html
+          grep -F 'Pengaduan Warga' /tmp/desa-digital-home.html
+          grep -F 'Cek Status Pengajuan' /tmp/desa-digital-home.html
+          grep -F 'Berita &amp; Pengumuman' /tmp/desa-digital-home.html
+          grep -F 'Jumlah Penduduk' /tmp/desa-digital-home.html
+          grep -F 'Navigasi mobile' /tmp/desa-digital-home.html
