@@ -42,6 +42,7 @@ function migration_add_column(PDO $pdo, string $table, string $column, string $d
         $allowed = [
             'family_records' => ['family_number_cipher' => 'TEXT NULL', 'family_number_hash' => 'CHAR(64) NULL'],
             'residents' => ['nik_cipher' => 'TEXT NULL', 'nik_hash' => 'CHAR(64) NULL'],
+            'resident_change_requests' => ['source_snapshot' => 'JSON NULL'],
         ];
         if (!isset($allowed[$table][$column]) || $allowed[$table][$column] !== $definition) {
             throw new RuntimeException('Kolom migrasi tidak dikenal.');
@@ -54,6 +55,12 @@ migration_add_column($pdo, 'family_records', 'family_number_cipher', 'TEXT NULL'
 migration_add_column($pdo, 'family_records', 'family_number_hash', 'CHAR(64) NULL');
 migration_add_column($pdo, 'residents', 'nik_cipher', 'TEXT NULL');
 migration_add_column($pdo, 'residents', 'nik_hash', 'CHAR(64) NULL');
+migration_add_column($pdo, 'resident_change_requests', 'source_snapshot', 'JSON NULL');
+
+// Expand the enum before marking older pending requests as conflicts. Existing requests
+// without a source snapshot cannot be safely auto-approved after a code upgrade.
+$pdo->exec("ALTER TABLE resident_change_requests MODIFY status ENUM('draft','submitted','in_review','revision_requested','conflict','approved','rejected') NOT NULL DEFAULT 'draft'");
+$pdo->exec("UPDATE resident_change_requests SET status='conflict', review_note=CONCAT('[KONFLIK] Snapshot sumber belum ada setelah pembaruan. Admin Desa harus membandingkan data terkini sebelum meminta revisi.'), reviewed_at=NOW() WHERE source_snapshot IS NULL AND status IN ('submitted','in_review','revision_requested')");
 
 foreach ([
     ['family_records', 'uq_family_number'],
