@@ -132,7 +132,7 @@ foreach ([
 }
 
 $letterMigration = load_text('bin/migrate_service_letters.php');
-check_true(str_contains($letterMigration, 'letter_number') && str_contains($letterMigration, 'letter_issued_by') && str_contains($letterMigration, 'letter_issued_at'), 'Service letter migration must cover number, issuer, and issue time.');
+check_true(str_contains($letterMigration, 'letter_number') && str_contains($letterMigration, 'letter_snapshot') && str_contains($letterMigration, 'letter_issued_by') && str_contains($letterMigration, 'letter_issued_at'), 'Service letter migration must cover number, issuer, and issue time.');
 check_true(str_contains($letterMigration, 'uq_service_letter_number') && str_contains($letterMigration, 'fk_request_letter_issuer'), 'Service letter migration must create a unique number index and issuer foreign key.');
 $privacyMigration = load_text('bin/migrate_private_identifiers.php');
 check_true(str_contains($privacyMigration, 'DROP INDEX') && str_contains($privacyMigration, 'decrypt_private_identifier'), 'A safe and rerunnable migration must exist for earlier development databases.');
