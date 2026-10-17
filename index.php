@@ -591,14 +591,13 @@ if ($page === 'dashboard' && ($viewer['role'] ?? '') === 'owner') $title = 'Dash
 elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $title = 'Dashboard Admin Desa';
 ?>
 <!doctype html>
-<html lang="id">
+<html lang="id"<?= (($_COOKIE['desa-theme'] ?? '') === 'dark' ? ' data-theme="dark"' : '') ?>>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#075b46">
   <meta name="description" content="<?= e(site_val('meta_description','Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.')) ?>">
   <title><?= e($title) ?> · <?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></title>
-  <script>try{const savedTheme=localStorage.getItem('desa-theme');if(savedTheme==='dark'||savedTheme==='light')document.documentElement.dataset.theme=savedTheme;}catch{}</script>
   <link rel="stylesheet" href="assets/style.css?v=3">
 </head>
 <body>

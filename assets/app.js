@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (icon) icon.textContent = selectedTheme === 'dark' ? '☀' : '☾';
     }
     if (persist) {
-      try { localStorage.setItem('desa-theme', selectedTheme); } catch {}
+      try { document.cookie = 'desa-theme=' + selectedTheme + '; Max-Age=31536000; Path=/; SameSite=Lax'; } catch {}
     }
   };
   const initialTheme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
