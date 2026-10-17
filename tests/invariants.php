@@ -314,6 +314,7 @@ check_true(str_contains($publicIndex,"SELECT content_key,content_value FROM site
 check_true(str_contains($publicIndex,'function site_image_val') && str_contains($publicIndex,'is_uploaded_file($tmp)') && str_contains($publicIndex,'getimagesize($tmp)'), 'CMS image rendering and uploads must validate paths, upload origin, file signature, and dimensions.');
 check_true(str_contains($publicJs,'[data-preview-image-key]') && str_contains($publicJs,'data-preview-site-image'), 'CMS must preview replacement images.');
 check_true(str_contains($publicViews,'data-site-setting-filter') && str_contains($publicJs,'siteSettingFilter'), 'Large public-content CMS must have a working settings search.');
+check_true(str_contains($publicIndex,"site_val('news_fallback_alt'") && str_contains($publicIndex,"site_val('nav_open_menu_aria'") && str_contains($publicJs,"data-close-label"), 'Public image alt text and menu accessibility labels must be editable.');
 check_true(str_contains($publicViews,'data-setting-key') && str_contains($publicJs,'siteSettingFilter.value'), 'CMS search must match editable setting keys/labels.');
 if ($failures) {
     fwrite(STDERR, "FAILED: " . count($failures) . " of {$checks} checks\n");
