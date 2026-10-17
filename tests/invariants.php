@@ -69,6 +69,9 @@ foreach ([
     'CREATE TABLE IF NOT EXISTS user_notifications',
     'UNIQUE KEY uq_resident_nik_hash',
     'UNIQUE KEY uq_family_number_hash',
+    'letter_number VARCHAR(100) NULL',
+    'UNIQUE KEY uq_service_letter_number (letter_number)',
+    'CONSTRAINT fk_request_letter_issuer',
     'family_number_cipher TEXT NOT NULL',
     'nik_cipher TEXT NOT NULL'
 ] as $needle) {
@@ -107,8 +110,6 @@ foreach ([
     'function module_serve_private_service_file',
     'function module_can_access_service_file',
     'function module_service_status_transition_allowed',
-    'letter_number VARCHAR(100) NULL',
-    'UNIQUE KEY uq_service_letter_number (letter_number)',
     'function module_serve_export',
     'function module_upload_private_file',
     'module_import_residents',
