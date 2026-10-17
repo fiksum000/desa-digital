@@ -156,6 +156,9 @@ check_true(str_contains($backupScript, 'storage/uploads assets/uploads'), 'Backu
 check_true(str_contains($backupScript, 'BACKUP_DIR') && str_contains($backupScript, 'tidak boleh berada di dalam repository'), 'Backup output must be outside the Git repository.');
 check_true(str_contains($restoreScript, 'Ketik RESTORE') && str_contains($restoreScript, 'APP_KEY') && str_contains($restoreScript, 'docker compose stop web'), 'Restore must require confirmation and warn about APP_KEY while stopping writes.');
 check_true(str_contains($restoreScript, 'assets/uploads') && str_contains($restoreScript, 'storage/uploads') && str_contains($restoreScript, 'jalur arsip tidak diizinkan'), 'Restore must restore upload volumes and validate archive paths.');
+$vhost = load_text('docker/apache-vhost.conf');
+check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
+check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
 $compose = load_text('docker-compose.yml');
 check_true(str_contains($compose, 'DB_ROOT_PASSWORD'), 'Compose must require a database root password.');
 check_true(str_contains($compose, 'database_data:/var/lib/mysql'), 'Database must use a persistent volume.');
