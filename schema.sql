@@ -340,6 +340,16 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   CONSTRAINT fk_audit_actor FOREIGN KEY (actor_id) REFERENCES app_users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  bucket_hash CHAR(64) NOT NULL PRIMARY KEY,
+  bucket_type ENUM('account','ip') NOT NULL,
+  attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  window_started_at DATETIME NOT NULL,
+  locked_until DATETIME NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_auth_attempt_lock (locked_until, window_started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 INSERT INTO service_types (name, slug, description, requirements, estimated_days, is_published, sort_order)
 VALUES
  ('Surat Keterangan Domisili', 'surat-keterangan-domisili', 'Permohonan surat keterangan domisili.', JSON_ARRAY('KTP','Kartu Keluarga'), 3, 1, 10),
