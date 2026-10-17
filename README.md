@@ -42,3 +42,12 @@ Backup terenkripsi tersedia melalui `bin/backup.sh`; pemulihan interaktif melalu
 3. Bangun layanan surat, alur revisi/persetujuan, pengaduan, dan pelacakan.
 4. Bangun seluruh CMS publik dan panel admin.
 5. Jalankan tes otomatis, pengujian browser, backup, dan pemulihan sebelum deployment produksi.
+
+
+## Peran Owner dan dashboard administrasi
+
+- `owner` adalah peran tingkat tertinggi dan terpisah dari Admin Desa. Gunakan akun Owner terbatas untuk pengawasan, bukan akun kerja harian.
+- Database lama harus menjalankan migrasi `php bin/migrate_owner_role.php` sebelum dapat menyimpan role Owner.
+- Buat akun Owner pertama melalui terminal tepercaya dengan `php bin/create_owner.php <username> <nama-lengkap> <sandi-minimal-20-karakter>`. Jalankan hanya setelah migrasi role. Skrip menolak jika akun Owner sudah pernah dibuat.
+- Dashboard Admin Desa/Owner ada pada halaman Dashboard setelah login. Statistik dihitung dari data database; jumlah yang belum tersedia ditampilkan sebagai tanda strip.
+- Dashboard bukan pengganti uji akses. Sebelum produksi, jalankan tes CI serta validasi formulir, ekspor CSV/ZIP, dan izin dokumen privat di lingkungan staging.
