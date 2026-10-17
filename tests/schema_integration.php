@@ -25,7 +25,7 @@ $required = [
     'dusun','rw_units','rt_units','app_users','family_records','residents',
     'resident_documents','resident_change_requests','service_types','service_requests',
     'service_request_files','complaints','news_posts','site_content','site_content_versions',
-    'site_content_revisions','public_directory_items','budget_reports','audit_logs',
+    'site_content_revisions','public_directory_items','budget_reports','audit_logs','auth_attempts',
 ];
 require_once dirname(__DIR__) . '/app/modules.php';
 expect_true(module_csv_safe('=SUM(A1:A2)') === "'=SUM(A1:A2)", 'CSV formulas beginning with equals must be neutralized.');
@@ -33,6 +33,37 @@ expect_true(module_csv_safe('+CMD') === "'+CMD", 'CSV formulas beginning with pl
 expect_true(module_csv_safe('Ordinary text') === 'Ordinary text', 'Ordinary CSV text must remain readable.');
 $tables = $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()")->fetchAll(PDO::FETCH_COLUMN);
 foreach ($required as $table) expect_true(in_array($table, $tables, true), "Missing table {$table}");
+
+// The throttling buckets persist in MariaDB, so a fresh browser session cannot reset failed attempts.
+$_SERVER['REMOTE_ADDR'] = '192.0.2.77';
+$limitedAccount = 'ci-lock-' . bin2hex(random_bytes(5));
+for ($i=0; $i<5; $i++) auth_rate_limit_record_failure($limitedAccount);
+$accountBlocked = false;
+try { auth_rate_limit_assert_allowed($limitedAccount); } catch (RuntimeException $e) { $accountBlocked = true; }
+expect_true($accountBlocked, 'The fifth failed password attempt must lock that account for the window.');
+auth_rate_limit_clear_account($limitedAccount);
+$accountAllowedAfterClear = true;
+try { auth_rate_limit_assert_allowed($limitedAccount); } catch (RuntimeException $e) { $accountAllowedAfterClear = false; }
+expect_true($accountAllowedAfterClear, 'Clearing a successful account login must preserve a network bucket below its limit.');
+$keys = auth_rate_limit_keys($limitedAccount);
+db()->prepare('DELETE FROM auth_attempts WHERE bucket_hash IN (?,?)')->execute([$keys['account'],$keys['ip']]);
+
+$networkUsers = [];
+$networkAccountHashes = [];
+for ($i=0; $i<20; $i++) {
+    $name = 'ci-ip-' . $i . '-' . bin2hex(random_bytes(3));
+    $networkUsers[] = $name;
+    $networkAccountHashes[] = auth_rate_limit_keys($name)['account'];
+    auth_rate_limit_record_failure($name);
+}
+$networkBlocked = false;
+try { auth_rate_limit_assert_allowed('ci-ip-new-account'); } catch (RuntimeException $e) { $networkBlocked = true; }
+expect_true($networkBlocked, 'Twenty failed attempts from one IP must temporarily throttle that network.');
+$ipHash = auth_rate_limit_keys('ci-ip-cleanup')['ip'];
+$cleanupHashes = array_merge($networkAccountHashes, [$ipHash]);
+$placeholders = implode(',', array_fill(0, count($cleanupHashes), '?'));
+db()->prepare('DELETE FROM auth_attempts WHERE bucket_hash IN (' . $placeholders . ')')->execute($cleanupHashes);
+
 
 // Commit a minimal territory fixture first because module_is_allowed_rt intentionally
 // checks the database through the application's separate connection.
