@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS app_users (
   rw_id BIGINT UNSIGNED NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   must_change_password TINYINT(1) NOT NULL DEFAULT 0,
+  session_version INT UNSIGNED NOT NULL DEFAULT 1,
   last_login_at DATETIME NULL,
   created_by BIGINT UNSIGNED NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -269,6 +270,18 @@ CREATE TABLE IF NOT EXISTS site_content_versions (
   KEY idx_content_versions (content_id, created_at),
   CONSTRAINT fk_content_version_content FOREIGN KEY (content_id) REFERENCES site_content(id) ON DELETE RESTRICT,
   CONSTRAINT fk_content_version_editor FOREIGN KEY (editor_id) REFERENCES app_users(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS site_content_revisions (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  content_key VARCHAR(120) NOT NULL,
+  content_value MEDIUMTEXT NOT NULL,
+  status ENUM('draft','published','archived') NOT NULL DEFAULT 'draft',
+  editor_id BIGINT UNSIGNED NOT NULL,
+  published_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_site_revisions_key_status (content_key, status, created_at),
+  CONSTRAINT fk_site_revision_editor FOREIGN KEY (editor_id) REFERENCES app_users(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS audit_logs (
