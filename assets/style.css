@@ -50,3 +50,17 @@
 .preview-hero-img{display:block;width:100%;height:76px;object-fit:cover;object-position:50% 50%;border-radius:8px;margin:0 0 11px;background:#dfece0}
 .preview-mobile .preview-hero-img{height:96px;border-radius:10px}
 @media(max-width:760px){.preview-hero-img{height:86px}.preview-mobile .preview-hero-img{height:110px}}
+
+
+/* Private inbox: clear unread state and touch-friendly actions on desktop/mobile. */
+.notification-list { display:grid; gap:12px; }
+.notification-item { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; padding:16px; border:1px solid var(--line, #dce9e1); border-radius:16px; background:#fff; }
+.notification-item.notification-unread { border-color:#a8d6bb; background:#f3faf5; }
+.notification-copy { min-width:0; flex:1; }
+.notification-copy p { margin:8px 0; overflow-wrap:anywhere; }
+.notification-copy small { display:block; margin-top:4px; color:var(--muted, #62756c); }
+.notification-action { flex:0 0 auto; }
+@media (max-width:640px) {
+  .notification-item { flex-direction:column; gap:12px; padding:14px; }
+  .notification-action, .notification-action .button { width:100%; }
+}
