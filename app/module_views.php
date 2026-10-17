@@ -92,7 +92,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 foreach($rows as $item) {
                     echo '<article class="news-card">';
                     if(!empty($item['image_key'])) echo '<div class="news-image"><img src="'.e(public_image_src($item['image_key'],site_image_val('news_fallback_image','assets/village-hero.svg'))).'" alt="'.e($item['alt_text'] ?: $item['title']).'"></div>';
-                    else echo '<div class="news-image"><img src="'.e(site_image_val('news_fallback_image','assets/village-hero.svg')).'" alt="Ilustrasi desa"></div>';
+                    else echo '<div class="news-image"><img src="'.e(site_image_val('news_fallback_image','assets/village-hero.svg')).'" alt="'.e(site_val('news_fallback_alt','Ilustrasi desa')).'"></div>';
                     echo '<div class="news-content"><span class="status-pill neutral">'.e(strtoupper($item['kind'])).'</span><h3>'.e($item['title']).'</h3>';
                     if(!empty($item['excerpt'])) echo '<p>'.e($item['excerpt']).'</p>';
                     echo '<p>'.nl2br(e($item['description'])).'</p>';
@@ -425,6 +425,14 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
           'nav_complaints'=>'Menu Pengaduan','nav_profile'=>'Menu Profil Desa','nav_more'=>'Menu Lainnya',
           'nav_umkm'=>'Menu UMKM & Wisata','nav_map'=>'Menu Peta Desa','nav_budget'=>'Menu Transparansi Anggaran',
           'nav_contact'=>'Menu Kontak','nav_search_aria'=>'Teks aksesibilitas tombol pencarian','nav_login'=>'Tombol masuk',
+          'news_fallback_alt'=>'Teks alternatif gambar pengganti berita/UMKM',
+          'news_read_label'=>'Label aksesibilitas tautan baca berita',
+          'nav_open_menu_aria'=>'Label buka menu HP',
+          'nav_close_menu_aria'=>'Label tutup menu HP',
+          'nav_main_aria'=>'Label aksesibilitas navigasi utama',
+          'nav_mobile_drawer_aria'=>'Label aksesibilitas menu tambahan HP',
+          'home_service_strip_aria'=>'Label aksesibilitas layanan utama',
+          'mobile_nav_aria'=>'Label aksesibilitas navigasi bawah HP',
           'footer_summary'=>'Ringkasan footer','footer_tagline'=>'Slogan footer','footer_services'=>'Tagline footer',
           '__group_home'=>'Beranda publik',
           'home_eyebrow'=>'Label kecil di atas judul utama','hero_cta_apply'=>'Tombol ajukan surat','hero_cta_track'=>'Tombol lacak pengajuan',
@@ -547,6 +555,8 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
           'stat_residents_label'=>'Jumlah Penduduk','stat_families_label'=>'Jumlah KK','stat_area_label'=>'Luas Wilayah','stat_dusun_label'=>'Dusun','stats_aria_label'=>'Ringkasan data desa',
           'nav_home'=>'Beranda','nav_services'=>'Layanan Desa','nav_news'=>'Berita & Pengumuman','nav_complaints'=>'Pengaduan','nav_profile'=>'Profil Desa','nav_more'=>'Lainnya',
           'nav_umkm'=>'UMKM & Wisata','nav_map'=>'Peta Desa','nav_budget'=>'Transparansi Anggaran','nav_contact'=>'Kontak','nav_search_aria'=>'Cari berita','nav_login'=>'Masuk',
+          'news_fallback_alt'=>'Ilustrasi desa','news_read_label'=>'Baca berita','nav_open_menu_aria'=>'Buka menu tambahan','nav_close_menu_aria'=>'Tutup menu tambahan',
+          'nav_main_aria'=>'Navigasi utama','nav_mobile_drawer_aria'=>'Menu tambahan','home_service_strip_aria'=>'Layanan utama','mobile_nav_aria'=>'Navigasi mobile',
           'footer_summary'=>'Layanan desa, kini lebih dekat.','footer_tagline'=>'Informasi publik dan pelayanan warga dalam satu tempat.','footer_services'=>'Pelayanan publik yang mudah, cepat, dan transparan.',
           'services_eyebrow'=>'Pelayanan Publik','services_title'=>'Layanan Desa','services_intro'=>'Pilih jenis layanan yang kamu butuhkan. Status pengajuan dapat dipantau dengan kode pelacakan.','services_list_title'=>'Daftar layanan',
           'complaints_eyebrow'=>'Suara Warga','complaints_intro'=>'Sampaikan aspirasi, keluhan, atau laporan. Data pelapor hanya terlihat oleh pihak yang berwenang.','complaints_form_title'=>'Kirim pengaduan',
