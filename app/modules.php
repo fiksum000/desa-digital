@@ -1113,9 +1113,16 @@ function module_handle_post(): void {
                         throw new RuntimeException('Tautan peta harus berupa URL HTTPS yang valid.');
                     }
                 }
+                $resetImages=$_POST['reset_site_image'] ?? [];
+                if(!is_array($resetImages)) throw new RuntimeException('Pilihan reset gambar tidak valid.');
                 foreach(module_site_image_keys() as $imageKey) {
                     $image=upload_public_image($imageKey);
-                    if($image) $values[$imageKey]=$image;
+                    if($image) {
+                        $values[$imageKey]=$image;
+                    } elseif(isset($resetImages[$imageKey])) {
+                        if((string)$resetImages[$imageKey]!=='1') throw new RuntimeException('Pilihan reset gambar tidak valid.');
+                        $values[$imageKey]='';
+                    }
                 }
                 $operation=(string)($_POST['operation'] ?? 'draft');
                 if(!in_array($operation,['draft','publish'],true)) throw new RuntimeException('Pilihan simpan tidak valid.');
