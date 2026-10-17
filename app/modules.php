@@ -1532,3 +1532,165 @@ function module_serve_service_letter_pdf(): void {
     }
 }
 
+
+
+/**
+ * Download a scoped resident register and, optionally, approved KTP/KK files.
+ * Full identifiers are decrypted only for the explicitly authorized village admin.
+ */
+function module_serve_admin_resident_bundle(): void {
+    if ((string)($_GET['page'] ?? '') !== 'admin-resident-export') return;
+    $user = require_login();
+    if ((string)($user['role'] ?? '') !== 'admin_desa') {
+        http_response_code(403);
+        exit('Ekspor lengkap hanya tersedia untuk Admin Desa.');
+    }
+    $reason = trim((string)($_GET['reason'] ?? ''));
+    if (mb_strlen($reason) < 4 || mb_strlen($reason) > 300) {
+        http_response_code(400);
+        exit('Alasan ekspor wajib diisi minimal 4 karakter.');
+    }
+    $scope = (string)($_GET['scope'] ?? 'all');
+    if (!in_array($scope, ['all','dusun','rw','rt'], true)) {
+        http_response_code(400);
+        exit('Filter wilayah tidak valid.');
+    }
+    $scopeId = filter_var($_GET['scope_id'] ?? '', FILTER_VALIDATE_INT);
+    if ($scope === 'all') $scopeId = null;
+    elseif (!$scopeId || $scopeId < 1) {
+        http_response_code(400);
+        exit('Pilih wilayah untuk filter ekspor.');
+    }
+    $bundle = (string)($_GET['bundle'] ?? 'data');
+    if (!in_array($bundle, ['data','data_documents'], true)) {
+        http_response_code(400);
+        exit('Jenis paket ekspor tidak valid.');
+    }
+    if ($bundle === 'data_documents' && !class_exists('ZipArchive')) {
+        http_response_code(503);
+        exit('Fitur ZIP belum tersedia di server. Aktifkan ekstensi PHP ZIP lalu coba kembali.');
+    }
+
+    $pdo = db();
+    $where = '';
+    $params = [];
+    if ($scope === 'dusun') { $where = ' WHERE d.id=?'; $params[] = (int)$scopeId; }
+    elseif ($scope === 'rw') { $where = ' WHERE rw.id=?'; $params[] = (int)$scopeId; }
+    elseif ($scope === 'rt') { $where = ' WHERE rt.id=?'; $params[] = (int)$scopeId; }
+
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT r.id AS resident_id,r.family_id,r.rt_id,r.full_name,r.nik_cipher,r.birth_date,r.gender,
+                    r.relationship_to_head,r.phone,r.resident_status,
+                    f.family_number_cipher,f.address,f.status AS family_status,
+                    d.name AS dusun_name,rw.number_code AS rw_code,rt.number_code AS rt_code
+             FROM residents r
+             JOIN family_records f ON f.id=r.family_id
+             JOIN rt_units rt ON rt.id=r.rt_id
+             JOIN rw_units rw ON rw.id=rt.rw_id
+             LEFT JOIN dusun d ON d.id=rw.dusun_id{$where}
+             ORDER BY d.name,rw.number_code,rt.number_code,f.id,r.full_name
+             LIMIT 10001"
+        );
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+        if (count($rows) > 10000) {
+            http_response_code(413);
+            exit('Hasil lebih dari 10.000 penduduk. Pilih wilayah yang lebih kecil.');
+        }
+
+        $csvPath = tempnam(sys_get_temp_dir(), 'desa-export-');
+        if ($csvPath === false) throw new RuntimeException('Tidak dapat membuat berkas ekspor sementara.');
+        $csv = fopen($csvPath, 'wb');
+        if (!$csv) { @unlink($csvPath); throw new RuntimeException('Tidak dapat menulis data ekspor.'); }
+        fwrite($csv, "\xEF\xBB\xBF");
+        fputcsv($csv, ['Nama lengkap','NIK','Nomor KK','Tanggal lahir','Jenis kelamin','Hubungan keluarga','Telepon','Alamat','Status penduduk','Status keluarga','Dusun','RW','RT','ID penduduk internal','ID keluarga internal'], ';', '"', '\\');
+
+        foreach ($rows as $row) {
+            $nik = decrypt_private_identifier((string)$row['nik_cipher']);
+            $kk = decrypt_private_identifier((string)$row['family_number_cipher']);
+            if ($nik === null || $kk === null) {
+                fclose($csv); @unlink($csvPath);
+                throw new RuntimeException('Ada identitas terenkripsi yang tidak dapat dibuka. Ekspor dihentikan agar data tidak keliru.');
+            }
+            $values = [
+                $row['full_name'], $nik, $kk, $row['birth_date'], $row['gender'],
+                $row['relationship_to_head'], $row['phone'], $row['address'],
+                $row['resident_status'], $row['family_status'], $row['dusun_name'],
+                $row['rw_code'], $row['rt_code'], $row['resident_id'], $row['family_id']
+            ];
+            fputcsv($csv, array_map(static fn($v) => module_csv_safe($v === null ? '' : (string)$v), $values), ';', '"', '\\');
+        }
+        fclose($csv);
+
+        $documentCount = 0;
+        $zipPath = null;
+        if ($bundle === 'data_documents') {
+            $zipPath = tempnam(sys_get_temp_dir(), 'desa-bundle-');
+            if ($zipPath === false) { @unlink($csvPath); throw new RuntimeException('Tidak dapat membuat paket ZIP.'); }
+            $zip = new ZipArchive();
+            if ($zip->open($zipPath, ZipArchive::OVERWRITE) !== true) {
+                @unlink($csvPath); @unlink($zipPath);
+                throw new RuntimeException('Paket ZIP tidak dapat dibuat.');
+            }
+            $zip->addFile($csvPath, 'data-penduduk.csv');
+            $zip->addFromString('README.txt', "Paket data pribadi Desa Digital. Hanya untuk penggunaan administrasi berwenang.\nDokumen yang disertakan berstatus disetujui. Jaga kerahasiaan dan hapus salinan sesuai kebijakan desa.\n");
+            $ids = array_map(static fn($r) => (int)$r['resident_id'], $rows);
+            $familyIds = array_values(array_unique(array_map(static fn($r) => (int)$r['family_id'], $rows)));
+            if ($ids || $familyIds) {
+                $idPlaceholders = $ids ? implode(',', array_fill(0, count($ids), '?')) : 'NULL';
+                $familyPlaceholders = $familyIds ? implode(',', array_fill(0, count($familyIds), '?')) : 'NULL';
+                $docSql = "SELECT id,resident_id,family_id,document_type,storage_key,original_name,mime_type
+                           FROM resident_documents
+                           WHERE status='approved' AND document_type IN ('ktp','kk')
+                           AND (resident_id IN ({$idPlaceholders}) OR family_id IN ({$familyPlaceholders}))
+                           ORDER BY document_type,id";
+                $docStmt = $pdo->prepare($docSql);
+                $docStmt->execute(array_merge($ids, $familyIds));
+                $usedNames = [];
+                while ($doc = $docStmt->fetch()) {
+                    $key = (string)$doc['storage_key'];
+                    if (!preg_match('/^[a-f0-9]{48}\.(jpg|png|webp|pdf)$/', $key)) continue;
+                    $source = dirname(__DIR__) . '/storage/uploads/' . $key;
+                    if (!is_file($source)) continue;
+                    $type = (string)$doc['document_type'];
+                    $entityId = (int)($doc['resident_id'] ?: $doc['family_id']);
+                    $extension = strtolower(pathinfo($key, PATHINFO_EXTENSION));
+                    $base = preg_replace('/[^A-Za-z0-9._-]+/', '_', pathinfo((string)$doc['original_name'], PATHINFO_FILENAME)) ?: 'dokumen';
+                    $entry = 'dokumen/' . $type . '-' . $entityId . '-' . substr(hash('sha256', $key), 0, 10) . '-' . substr($base, 0, 60) . '.' . $extension;
+                    if (isset($usedNames[$entry])) $entry = 'dokumen/' . $type . '-' . (int)$doc['id'] . '.' . $extension;
+                    $usedNames[$entry] = true;
+                    if ($zip->addFile($source, $entry)) $documentCount++;
+                }
+            }
+            $zip->addFromString('daftar-dokumen.txt', "Jumlah dokumen yang dimasukkan: {$documentCount}\nHanya KTP/KK berstatus disetujui dan berkas yang tersedia di penyimpanan privat yang dimasukkan.\n");
+            $zip->close();
+        }
+
+        module_audit_actor($user, 'export', 'resident_private_bundle', null, null, [
+            'scope' => $scope, 'scope_id' => $scopeId, 'bundle' => $bundle,
+            'resident_count' => count($rows), 'document_count' => $documentCount, 'reason' => $reason
+        ]);
+        header('Cache-Control: private, no-store, max-age=0');
+        header('Pragma: no-cache');
+        header('X-Content-Type-Options: nosniff');
+        if ($bundle === 'data_documents' && $zipPath !== null) {
+            header('Content-Type: application/zip');
+            header('Content-Disposition: attachment; filename="desa-digital-data-penduduk-' . date('Ymd-His') . '.zip"');
+            header('Content-Length: ' . (string)filesize($zipPath));
+            readfile($zipPath);
+            @unlink($zipPath);
+        } else {
+            header('Content-Type: text/csv; charset=UTF-8');
+            header('Content-Disposition: attachment; filename="desa-digital-data-penduduk-' . date('Ymd-His') . '.csv"');
+            header('Content-Length: ' . (string)filesize($csvPath));
+            readfile($csvPath);
+        }
+        @unlink($csvPath);
+        exit;
+    } catch (Throwable $e) {
+        error_log('Admin resident bundle export failed.');
+        http_response_code(500);
+        exit('Ekspor belum berhasil. Periksa konfigurasi server dan log operasional.');
+    }
+}
