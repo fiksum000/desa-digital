@@ -168,6 +168,7 @@ module_serve_private_document();
 module_serve_private_service_file();
 module_serve_service_letter_pdf();
 module_serve_export();
+module_serve_admin_resident_bundle();
 module_handle_post();
 
 try {
