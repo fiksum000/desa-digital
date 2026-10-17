@@ -23,12 +23,19 @@ foreach ([
 
 putenv('APP_KEY=' . str_repeat('a', 64));
 require_once $root . '/app/bootstrap.php';
+require_once $root . '/app/modules.php';
 $rawNik = '3201000000000002';
 $encryptedNik = encrypt_private_identifier($rawNik);
 check_true($encryptedNik !== $rawNik, 'NIK harus disimpan dalam bentuk terenkripsi.');
 check_true(decrypt_private_identifier($encryptedNik) === $rawNik, 'NIK terenkripsi harus bisa dibuka hanya dengan APP_KEY yang sama.');
 check_true(mask_private_identifier($rawNik) === '************0002', 'NIK yang disimpan untuk tampilan hanya boleh berisi empat digit terakhir.');
 check_true(private_identifier_hash($rawNik) === private_identifier_hash($rawNik), 'HMAC NIK harus deterministik untuk pemeriksaan duplikasi.');
+$filePolicy = ['applicant_id' => 42];
+check_true(module_can_access_service_file(['id'=>42,'role'=>'warga'], $filePolicy), 'A resident must be able to access their own service request attachments.');
+check_true(!module_can_access_service_file(['id'=>43,'role'=>'warga'], $filePolicy), 'A resident must not access another resident service request attachments.');
+check_true(module_can_access_service_file(['id'=>8,'role'=>'petugas'], $filePolicy), 'Authorized service staff must be able to process request attachments.');
+check_true(!module_can_access_service_file(['id'=>9,'role'=>'rt'], $filePolicy), 'RT accounts must not access the private service attachment endpoint.');
+
 putenv('APP_KEY=' . str_repeat('b', 64));
 check_true(decrypt_private_identifier($encryptedNik) === null, 'Ciphertext tidak boleh bisa dibuka dengan APP_KEY yang berbeda.');
 putenv('APP_KEY=' . str_repeat('a', 64));
@@ -89,6 +96,8 @@ foreach ([
     'INSERT INTO user_notifications',
     "status='conflict'",
     'function module_serve_private_document',
+    'function module_serve_private_service_file',
+    'function module_can_access_service_file',
     'function module_serve_export',
     'function module_upload_private_file',
     'module_import_residents',
@@ -118,6 +127,7 @@ check_true(!str_contains($schema, 'UNIQUE KEY uq_resident_nik (nik)') && !str_co
 
 $loginSource = load_text('index.php');
 check_true(str_contains($loginSource, 'auth_rate_limit_assert_allowed($username)'), 'Login must enforce persistent rate limits before checking credentials.');
+check_true(str_contains($loginSource, 'name="attachments[]"') && str_contains($loginSource, 'normalize_private_uploads') && str_contains($loginSource, 'save_service_request_files'), 'Service request forms must upload attachments into private storage.');
 check_true(str_contains($loginSource, 'auth_rate_limit_record_failure($username)'), 'Login must record failed attempts in the database.');
 check_true(str_contains($loginSource, 'auth_rate_limit_clear_account($username)'), 'Successful login must clear the account failure bucket.');
 check_true(str_contains($schema, "'conflict'"), 'Change-request schema must include a conflict state.');
