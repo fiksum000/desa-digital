@@ -42,7 +42,7 @@ foreach ([
 $index = load_text('index.php');
 foreach ([
     'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman',
-    'function require_login', 'verify_csrf()', 'revision_requested',
+    'verify_csrf()', 'revision_requested',
     'SELECT tracking_code', "app_url('layanan',["
 ] as $needle) {
     check_true(str_contains($index, $needle), "App source missing expected functionality: {$needle}");
@@ -50,6 +50,7 @@ foreach ([
 
 $bootstrap = load_text('app/bootstrap.php');
 foreach ([
+    'function require_login',
     'PDO::ATTR_EMULATE_PREPARES => false',
     "'httponly' => true",
     "'samesite' => 'Lax'",
