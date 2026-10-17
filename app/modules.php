@@ -1205,6 +1205,17 @@ function module_serve_private_document(): void {
     }
 }
 
+function module_service_status_transition_allowed(string $from, string $to): bool {
+    $transitions = [
+        'submitted' => ['in_review', 'revision_requested', 'rejected'],
+        'in_review' => ['in_review', 'revision_requested', 'approved', 'rejected'],
+        'revision_requested' => ['in_review', 'revision_requested', 'rejected'],
+        'approved' => ['ready'],
+        'ready' => ['completed'],
+    ];
+    return in_array($to, $transitions[$from] ?? [], true);
+}
+
 function module_can_access_service_file(array $user, array $file): bool {
     $role = (string)($user['role'] ?? '');
     if ($role === 'warga') {
