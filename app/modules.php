@@ -173,10 +173,10 @@ function module_handle_post(): void {
                 $user = module_require_role(['admin_desa']);
                 $id=filter_input(INPUT_POST,'user_id',FILTER_VALIDATE_INT);
                 $operation=(string)($_POST['operation'] ?? '');
-                $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role IN ('rt','rw') LIMIT 1");
+                $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role IN ('rt','rw','petugas','kepala_desa') LIMIT 1");
                 $stmt->execute([$id]); $before=$stmt->fetch();
-                if (!$before) throw new RuntimeException('Akun RT/RW tidak ditemukan.');
-                $entityType=$before['role']==='rt'?'rt_account':'rw_account';
+                if (!$before) throw new RuntimeException('Akun wilayah/petugas tidak ditemukan.');
+                $entityType=match($before['role']) { 'rt'=>'rt_account','rw'=>'rw_account','petugas'=>'petugas_account','kepala_desa'=>'kepala_desa_account', default=>'managed_account' };
                 if ($operation==='deactivate' || $operation==='activate') {
                     $active=$operation==='activate'?1:0;
                     $pdo->prepare('UPDATE app_users SET is_active=?,session_version=session_version+1 WHERE id=?')->execute([$active,$id]);
@@ -188,7 +188,52 @@ function module_handle_post(): void {
                     $pdo->prepare('UPDATE app_users SET password_hash=?,must_change_password=1,session_version=session_version+1 WHERE id=?')->execute([password_hash($password,PASSWORD_DEFAULT),$id]);
                     module_audit_actor($user,'reset_password',$entityType,(int)$id,['session_version'=>(int)$before['session_version']],['session_version'=>(int)$before['session_version']+1]);
                     flash('Kata sandi direset dan sesi sebelumnya dicabut.');
+                } elseif ($operation==='update_identity') {
+                    $username=strtolower(trim((string)($_POST['username'] ?? '')));
+                    $fullName=trim((string)($_POST['full_name'] ?? ''));
+                    if(!preg_match('/^[a-z0-9._-]{4,80}$/',$username) || mb_strlen($fullName)<3 || mb_strlen($fullName)>160) throw new RuntimeException('Username atau nama akun tidak valid.');
+                    $pdo->prepare('UPDATE app_users SET username=?,full_name=? WHERE id=?')->execute([$username,$fullName,(int)$id]);
+                    module_audit_actor($user,'update_identity',$entityType,(int)$id,['username'=>$before['username'],'full_name'=>$before['full_name']],['username'=>$username,'full_name'=>$fullName]);
+                    flash('Identitas akun diperbarui.');
                 } else throw new RuntimeException('Tindakan akun tidak dikenali.');
+                redirect_to('admin-users');
+            }
+            case 'module_create_staff_account': {
+                $user = module_require_role(['admin_desa']);
+                $role=(string)($_POST['staff_role'] ?? '');
+                $username=strtolower(trim((string)($_POST['username'] ?? '')));
+                $name=trim((string)($_POST['full_name'] ?? ''));
+                $email=trim((string)($_POST['email'] ?? ''));
+                $password=(string)($_POST['password'] ?? '');
+                if(!in_array($role,['petugas','kepala_desa'],true)) throw new RuntimeException('Peran petugas tidak valid.');
+                if(!preg_match('/^[a-z0-9._-]{4,80}$/',$username)) throw new RuntimeException('Username harus 4–80 karakter dan hanya berisi huruf, angka, titik, garis bawah, atau tanda hubung.');
+                if(mb_strlen($name)<3 || mb_strlen($name)>160 || strlen($password)<14) throw new RuntimeException('Nama wajib diisi dan kata sandi awal minimal 14 karakter.');
+                if($email!=='' && !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new RuntimeException('Format email tidak valid.');
+                $stmt=$pdo->prepare('INSERT INTO app_users (username,email,full_name,password_hash,role,created_by,must_change_password) VALUES (?,?,?,?,?,?,1)');
+                $stmt->execute([$username,$email!==''?$email:null,$name,password_hash($password,PASSWORD_DEFAULT),$role,(int)$user['id']]);
+                $id=(int)$pdo->lastInsertId();
+                module_audit_actor($user,'create','staff_account',$id,null,['username'=>$username,'role'=>$role]);
+                flash('Akun '.role_label($role).' berhasil dibuat. Pengguna wajib mengganti kata sandi pada login pertama.');
+                redirect_to('admin-users');
+            }
+            case 'module_reassign_rt_account': {
+                $user = module_require_role(['admin_desa']);
+                $id=filter_input(INPUT_POST,'user_id',FILTER_VALIDATE_INT);
+                $rtId=filter_input(INPUT_POST,'rt_id',FILTER_VALIDATE_INT);
+                if(!$id || !$rtId) throw new RuntimeException('Pilih akun dan wilayah RT yang valid.');
+                $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role='rt' LIMIT 1");
+                $stmt->execute([$id]);$before=$stmt->fetch();
+                if(!$before) throw new RuntimeException('Akun RT tidak ditemukan.');
+                $stmt=$pdo->prepare('SELECT rt.id,rt.rw_id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.is_active=1 AND rw.is_active=1 LIMIT 1');
+                $stmt->execute([$rtId]);$target=$stmt->fetch();
+                if(!$target) throw new RuntimeException('Wilayah RT tujuan tidak aktif.');
+                $stmt=$pdo->prepare("SELECT id FROM app_users WHERE role='rt' AND rt_id=? AND is_active=1 AND id<>? LIMIT 1");
+                $stmt->execute([$rtId,$id]);
+                if($stmt->fetchColumn()) throw new RuntimeException('Wilayah tujuan sudah memiliki akun RT aktif. Nonaktifkan atau pindahkan akun yang lama dahulu.');
+                $pdo->prepare('UPDATE app_users SET rt_id=?,rw_id=?,session_version=session_version+1,must_change_password=1 WHERE id=?')
+                    ->execute([$rtId,(int)$target['rw_id'],(int)$id]);
+                module_audit_actor($user,'reassign','rt_account',(int)$id,['rt_id'=>(int)$before['rt_id'],'rw_id'=>(int)$before['rw_id']],['rt_id'=>$rtId,'rw_id'=>(int)$target['rw_id']]);
+                flash('Penugasan wilayah akun RT diperbarui. Sesi lama dicabut dan pengguna wajib mengganti kata sandi.');
                 redirect_to('admin-users');
             }
             case 'module_create_rw_account': {
@@ -626,7 +671,7 @@ function module_handle_post(): void {
         }
         flash($message,'error');
         $fallback = match ($action) {
-            'module_create_rt_account','module_update_rt_user','module_create_rw_account' => 'admin-users',
+            'module_create_rt_account','module_update_rt_user','module_create_rw_account','module_create_staff_account','module_reassign_rt_account' => 'admin-users',
             'module_create_dusun','module_create_rw' => 'admin-wilayah',
             'module_save_resident_family','module_add_resident' => 'rt-data',
             'module_submit_change','module_resubmit_change','module_review_change','module_review_resident' => 'perubahan',
