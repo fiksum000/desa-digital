@@ -15,6 +15,7 @@ $mvAllowedRoles = [
     'admin-directory' => ['petugas','admin_desa'],
     'admin-budget' => ['admin_desa'],
     'laporan' => ['rt','rw','petugas','admin_desa','kepala_desa'],
+    'notifikasi' => ['warga','rt','rw','petugas','admin_desa','kepala_desa'],
 ];
 function mv_top(string $title, string $description, bool $public = false): void {
     echo '<section class="page-hero"><span class="eyebrow">'.e($public?'Informasi Publik':'Ruang Kerja Terbatas').'</span><h1>'.e($title).'</h1><p>'.e($description).'</p></section>';
@@ -22,6 +23,7 @@ function mv_top(string $title, string $description, bool $public = false): void 
 function mv_tools_nav(array $user): void {
     echo '<nav class="module-toolbar" aria-label="Navigasi panel">';
     echo '<a href="'.e(app_url('dashboard')).'">Dashboard</a>';
+    echo '<a href="'.e(app_url('notifikasi')).'">Notifikasi</a>';
     $role=$user['role'] ?? '';
     if(in_array($role,['rt','admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rt-data')).'">Data Warga</a>';
     if(in_array($role,['rw','admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rw-rekap')).'">Rekap RW</a>';
@@ -478,6 +480,29 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         echo '<section class="panel"><h2>Daftar laporan</h2>';
         if($rows) {echo '<div class="table-wrap"><table><thead><tr><th>Tahun</th><th>Laporan</th><th>Nilai</th><th>Status</th><th>Aksi</th></tr></thead><tbody>';foreach($rows as $r) echo '<tr><td>'.e((string)$r['fiscal_year']).'</td><td>'.e($r['title']).(!empty($r['document_key'])?'<small><a class="text-link" href="'.e($r['document_key']).'" target="_blank" rel="noopener noreferrer">Lihat PDF</a></small>':'').'</td><td>'.($r['amount']!==null?'Rp '.e(number_format((float)$r['amount'],0,',','.')):'—').'</td><td><span class="status-pill '.e(status_class($r['status'])).'">'.e(status_text($r['status'])).'</span></td><td><a class="text-link" href="'.e(app_url('admin-budget',['edit_report'=>(int)$r['id']])).'">Edit</a></td></tr>';echo '</tbody></table></div>';}
         else echo '<p>Belum ada laporan transparansi.</p>';
+        echo '</section>';
+    } elseif($mvPage==='notifikasi') {
+        if(!mv_guard($mvPage,$mvUser,$mvAllowedRoles[$mvPage])) return;
+        mv_top('Notifikasi','Pemberitahuan privat untuk akun ini. Notifikasi tidak pernah ditampilkan kepada akun lain.');
+        $stmt=$dbx->prepare('SELECT id,title,message,notification_type,entity_type,entity_id,read_at,created_at FROM user_notifications WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 100');
+        $stmt->execute([(int)$mvUser['id']]);$notificationRows=$stmt->fetchAll();
+        $unreadCount=count(array_filter($notificationRows,static fn($row)=>empty($row['read_at'])));
+        echo '<section class="panel"><div class="section-heading compact-heading"><div><h2>Kotak masuk</h2><p>Yang belum dibaca: '.(int)$unreadCount.'</p></div><a class="button button-small button-outline" href="'.e(app_url('dashboard')).'">Kembali ke dashboard</a></div>';
+        if($notificationRows) {
+            echo '<div class="notification-list">';
+            foreach($notificationRows as $notification) {
+                $unread=empty($notification['read_at']);
+                echo '<article class="notification-item'.($unread?' notification-unread':'').'"><div class="notification-copy"><div class="section-heading compact-heading"><strong>'.e($notification['title']).'</strong><span class="status-pill '.($unread?'warn':'neutral').'">'.($unread?'Belum dibaca':'Sudah dibaca').'</span></div><p>'.nl2br(e($notification['message'])).'</p><small>'.e(date('d M Y H:i',strtotime($notification['created_at']))).'</small>';
+                if(!empty($notification['entity_type']) && !empty($notification['entity_id']) && $notification['entity_type']==='resident_change_request') {
+                    echo '<small>Referensi usulan #'.e((string)$notification['entity_id']).'</small>';
+                }
+                echo '</div>';
+                if($unread) echo '<form method="post" class="notification-action">'.csrf_field().'<input type="hidden" name="action" value="module_mark_notification_read"><input type="hidden" name="notification_id" value="'.(int)$notification['id'].'"><input type="hidden" name="return_page" value="notifikasi"><button class="button button-small button-outline" type="submit">Tandai dibaca</button></form>';
+                echo '</article>';
+            }
+            echo '</div>';
+            echo '<p class="muted">Maksimal 100 notifikasi terbaru ditampilkan. Isi notifikasi dibatasi pada akun penerima dan tidak membuka lampiran privat secara langsung.</p>';
+        } else echo '<div class="empty-news"><div><strong>Belum ada notifikasi.</strong><p>Pemberitahuan akan muncul di sini saat ada pembaruan yang terkait dengan akunmu.</p></div></div>';
         echo '</section>';
     } elseif($mvPage==='laporan') {
         mv_top('Laporan & Ekspor','Ekspor hanya sesuai kewenangan dan cakupan wilayah akun. Ekspor dicatat di audit log, dan NIK/KK lengkap tidak disertakan.');
