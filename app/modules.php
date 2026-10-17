@@ -604,10 +604,22 @@ function module_handle_post(): void {
                     if (!$stmt->fetchColumn()) throw new RuntimeException('RT tujuan tidak tersedia.');
                 }
                 if ($type==='deceased') $proposed=[];
-                $stmt=$pdo->prepare("INSERT INTO resident_change_requests (resident_id,family_id,source_rt_id,target_rt_id,change_type,proposed_data,reason,status,submitted_by) VALUES (?,?,?,?,?,?,?,'submitted',?)");
-                $stmt->execute([(int)$resident['id'],(int)$resident['family_id'],(int)$resident['rt_id'],$targetRt,$type,json_encode($proposed,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$reason,(int)$user['id']]);
-                $id=(int)$pdo->lastInsertId();
-                module_audit_actor($user,'submit_change','resident_change_requests',$id,null,['resident_id'=>(int)$resident['id'],'type'=>$type,'source_rt_id'=>(int)$resident['rt_id'],'target_rt_id'=>$targetRt]);
+                $pdo->beginTransaction();
+                try {
+                    $snapshot = module_change_snapshot((int)$resident['id'],(int)$resident['family_id'],$type,true);
+                    if ((int)$snapshot['resident_rt_id'] !== (int)($user['rt_id'] ?? 0)
+                        || (int)$snapshot['family_rt_id'] !== (int)($user['rt_id'] ?? 0)) {
+                        throw new RuntimeException('Wilayah warga/keluarga berubah saat usulan dibuat. Muat ulang halaman dan minta Admin Desa memeriksa data.');
+                    }
+                    $stmt=$pdo->prepare("INSERT INTO resident_change_requests (resident_id,family_id,source_rt_id,target_rt_id,change_type,proposed_data,source_snapshot,reason,status,submitted_by) VALUES (?,?,?,?,?,?,?,?, 'submitted',?)");
+                    $stmt->execute([(int)$resident['id'],(int)$resident['family_id'],(int)$resident['rt_id'],$targetRt,$type,json_encode($proposed,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),$reason,(int)$user['id']]);
+                    $id=(int)$pdo->lastInsertId();
+                    module_audit_actor($user,'submit_change','resident_change_requests',$id,null,['resident_id'=>(int)$resident['id'],'type'=>$type,'source_rt_id'=>(int)$resident['rt_id'],'target_rt_id'=>$targetRt,'snapshot_version'=>1]);
+                    $pdo->commit();
+                } catch (Throwable $e) {
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                    throw $e;
+                }
                 flash('Usulan perubahan dikirim ke antrean pemeriksaan. Data resmi belum diubah.');
                 redirect_to('perubahan');
             }
