@@ -56,6 +56,20 @@ $placeholders = implode(',', array_fill(0, count($cleanupHashes), '?'));
 db()->prepare('DELETE FROM auth_attempts WHERE bucket_hash IN (' . $placeholders . ')')->execute($cleanupHashes);
 
 
+// Per-account write limits must be atomic and isolated by action.
+$limitedActionUser = 7000000001;
+$limitedAction = 'ci_service_apply';
+for ($i = 0; $i < 2; $i++) user_action_rate_limit_consume($limitedAction, $limitedActionUser, 2, 600);
+$actionBlocked = false;
+try { user_action_rate_limit_consume($limitedAction, $limitedActionUser, 2, 600); } catch (RuntimeException $e) { $actionBlocked = true; }
+expect_true($actionBlocked, 'The write-action limit must block requests after the configured account limit.');
+$otherActionAllowed = true;
+try { user_action_rate_limit_consume('ci_complaint_submit', $limitedActionUser, 2, 600); } catch (RuntimeException $e) { $otherActionAllowed = false; }
+expect_true($otherActionAllowed, 'Each write-action type must have an independent throttle bucket.');
+$actionHash = hash_hmac('sha256', 'user-action|' . $limitedAction . '|' . $limitedActionUser, private_identifier_key('user-action-rate-limit'));
+$otherActionHash = hash_hmac('sha256', 'user-action|ci_complaint_submit|' . $limitedActionUser, private_identifier_key('user-action-rate-limit'));
+db()->prepare('DELETE FROM auth_attempts WHERE bucket_hash IN (?,?)')->execute([$actionHash,$otherActionHash]);
+
 // Commit a minimal territory fixture first because module_is_allowed_rt intentionally
 // checks the database through the application's separate connection.
 $pdo->beginTransaction();

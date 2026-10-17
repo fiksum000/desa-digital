@@ -31,6 +31,7 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 - Uji akun dari RT berbeda agar tidak dapat mengakses warga, laporan, atau dokumen RT lain.
 - Uji data ganda NIK/KK, revisi surat, persetujuan berjenjang, unggah ulang dokumen, dan pergantian pengurus.
 - Login sekarang membatasi percobaan secara persisten: maksimal 5 kegagalan per akun dan 20 per alamat jaringan dalam jendela 10 menit. Kunci bucket adalah HMAC dari APP_KEY; alamat IP mentah tidak disimpan di tabel pembatasan.
+- Untuk mengurangi spam dari satu akun, pengajuan surat baru, revisi pengajuan, dan pengaduan masing-masing dibatasi maksimal 10 kali per jam. Pembatasan disimpan di tabel `auth_attempts` dengan kunci HMAC dan bucket terpisah per jenis aksi; tidak perlu migrasi skema tambahan.
 - Siapkan MFA admin jika tersedia, serta prosedur reset akun. Kredensial Owner harus unik, terpisah dari akun harian, dan dipakai hanya oleh pemilik sistem.
 - Buat backup terenkripsi database dan file upload di lokasi terpisah. Uji pemulihan, jangan hanya cek file backup ada.
 - Isi profil desa, kontak, jenis surat, syarat resmi, SOP dan pejabat penyetuju bersama pemerintah desa. Statistik kosong sengaja ditampilkan sebagai tanda strip, bukan angka rekaan.

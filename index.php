@@ -327,6 +327,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'apply_service') {
             $user = require_login();
             if (($user['role'] ?? '') !== 'warga') throw new RuntimeException('Pengajuan online tersedia untuk akun warga.');
+            user_action_rate_limit_consume('service_apply', (int)$user['id'], 10, 3600);
             $serviceId = filter_input(INPUT_POST, 'service_type_id', FILTER_VALIDATE_INT);
             $subject = trim((string)($_POST['subject'] ?? ''));
             $details = trim((string)($_POST['details'] ?? ''));
@@ -359,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'revise_service') {
             $user = require_login();
             if (($user['role'] ?? '') !== 'warga') throw new RuntimeException('Akses tidak diizinkan.');
+            user_action_rate_limit_consume('service_revise', (int)$user['id'], 10, 3600);
             $id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
             $subject = trim((string)($_POST['subject'] ?? ''));
             $details = trim((string)($_POST['details'] ?? ''));
@@ -390,6 +392,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'submit_complaint') {
             $user = require_login();
             if (($user['role'] ?? '') !== 'warga') throw new RuntimeException('Pengaduan online tersedia untuk akun warga.');
+            user_action_rate_limit_consume('complaint_submit', (int)$user['id'], 10, 3600);
             $title = trim((string)($_POST['title'] ?? ''));
             $category = trim((string)($_POST['category'] ?? 'umum'));
             $description = trim((string)($_POST['description'] ?? ''));
