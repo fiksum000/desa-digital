@@ -14,7 +14,7 @@ function load_text(string $relative): string {
     return is_file($path) ? (string)file_get_contents($path) : '';
 }
 foreach ([
-    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css', 'bin/migrate_service_letters.php',
+    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css', 'bin/migrate_service_letters.php', 'bin/migrate_owner_role.php', 'bin/create_owner.php',
     'assets/app.js', 'assets/village-hero.svg', 'assets/village-hero.webp', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php', 'bin/backup.sh', 'bin/restore.sh',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
@@ -28,6 +28,9 @@ $rawNik = '3201000000000002';
 $encryptedNik = encrypt_private_identifier($rawNik);
 check_true($encryptedNik !== $rawNik, 'NIK harus disimpan dalam bentuk terenkripsi.');
 check_true(decrypt_private_identifier($encryptedNik) === $rawNik, 'NIK terenkripsi harus bisa dibuka hanya dengan APP_KEY yang sama.');
+check_true(role_label('owner') === 'Owner', 'The Owner role must have a dedicated display label.');
+check_true(can_manage_content(['role'=>'owner']), 'Owner must have top-level content management access.');
+check_true(can_process_requests(['role'=>'owner']), 'Owner must have top-level request processing access.');
 check_true(mask_private_identifier($rawNik) === '************0002', 'NIK yang disimpan untuk tampilan hanya boleh berisi empat digit terakhir.');
 check_true(private_identifier_hash($rawNik) === private_identifier_hash($rawNik), 'HMAC NIK harus deterministik untuk pemeriksaan duplikasi.');
 $filePolicy = ['applicant_id' => 42];
@@ -277,7 +280,7 @@ $bundleSource = load_text('app/modules.php');
 $bundleView = load_text('app/module_views.php');
 $indexSource = load_text('index.php');
 check_true(str_contains($bundleSource, "if ((string)(\$_GET['page'] ?? '') !== 'admin-resident-export') return;"), 'Admin resident bundle endpoint must be explicitly routed.');
-check_true(str_contains($bundleSource, "(\$user['role'] ?? '') !== 'admin_desa'"), 'Full resident data bundle must be restricted to Admin Desa.');
+check_true(str_contains($bundleSource, "!in_array((string)(\$user['role'] ?? ''), ['admin_desa','owner'], true)"), 'Full resident data bundle must be restricted to Admin Desa and Owner.');
 check_true(str_contains($bundleSource, "decrypt_private_identifier((string)\$row['nik_cipher'])") && str_contains($bundleSource, "decrypt_private_identifier((string)\$row['family_number_cipher'])"), 'Full NIK and KK must be decrypted through the application privacy helper.');
 check_true(str_contains($bundleSource, "status='approved' AND document_type IN ('ktp','kk')"), 'ZIP bundles must include only approved KTP/KK documents.');
 check_true(str_contains($bundleSource, 'AND rt_id IN ({$rtPlaceholders})'), 'ZIP documents must also belong to an RT inside the selected resident scope.');
@@ -287,7 +290,9 @@ check_true(str_contains($bundleSource, "header('Cache-Control: private, no-store
 check_true(str_contains($bundleSource, "LIMIT 10001") && str_contains($bundleSource, "count(\$rows) > 10000"), 'Resident exports must enforce the row limit.');
 check_true(str_contains($bundleSource, 'scopeChecks') && str_contains($bundleSource, 'ID wilayah tidak cocok dengan filter'), 'Resident export scope IDs must be validated against the selected active region table.');
 check_true(str_contains($bundleSource, 'ZipArchive::CREATE | ZipArchive::OVERWRITE'), 'ZIP export must create the temporary archive before overwriting it.');
-check_true(str_contains($bundleView, "'admin-resident-export' => ['admin_desa']") && str_contains($bundleView, 'Unduh Data Penduduk'), 'Admin export UI must be restricted to Admin Desa.');
+check_true(str_contains($bundleView, "'admin-resident-export' => ['admin_desa','owner']") && str_contains($bundleView, 'Unduh Data Penduduk'), 'Admin export UI must be restricted to Admin Desa and Owner.');
+check_true(str_contains($indexSource, "'admin-resident-export','laporan'") || str_contains($indexSource, "'admin-budget','admin-resident-export'"), 'Admin resident export module must be routable from index.php.');
+check_true(str_contains(load_text('schema.sql'), "ENUM('owner','warga','rt','rw','petugas','admin_desa','kepala_desa')"), 'Schema must recognize the top-level Owner role.');
 check_true(str_contains($indexSource, 'module_serve_admin_resident_bundle();'), 'Admin resident bundle endpoint must be invoked by the request dispatcher.');
 
 
