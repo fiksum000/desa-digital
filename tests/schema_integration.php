@@ -196,7 +196,7 @@ try {
     $pdo->prepare("INSERT INTO service_requests (tracking_code,service_type_id,applicant_id,subject,request_data,status) VALUES (?,?,?,?,?,?)")
         ->execute(['CI-SR-TEST-001',$serviceId,$wargaId,'CI pengajuan',json_encode(['details'=>'CI test'],JSON_THROW_ON_ERROR),'submitted']);
     $serviceRequestId = (int)$pdo->lastInsertId();
-    $pdo->prepare('UPDATE service_requests SET letter_number=?,letter_issued_by=?,letter_issued_at=NOW() WHERE id=?')->execute(['CI/LET/2026/001',$adminId,$serviceRequestId]);
+    $pdo->prepare('UPDATE service_requests SET letter_number=?,letter_snapshot=?,letter_issued_by=?,letter_issued_at=NOW() WHERE id=?')->execute(['CI/LET/2026/001',json_encode(['village_name'=>'Desa CI','office_address'=>'Alamat CI','village_regency'=>'Kabupaten CI','village_province'=>'Jawa Barat','village_head_name'=>'Kepala Desa CI'],JSON_THROW_ON_ERROR),$adminId,$serviceRequestId]);
     $letterStmt = $pdo->prepare('SELECT letter_number,letter_issued_by,letter_issued_at FROM service_requests WHERE id=?');
     $letterStmt->execute([$serviceRequestId]);
     $letterRow = $letterStmt->fetch();
