@@ -540,7 +540,7 @@ $title = $pageTitles[$page] ?? 'DESA MAKASARI';
 <header class="site-header">
   <a class="brand" href="<?= e(app_url('home')) ?>" aria-label="DESA MAKASARI - Beranda">
     <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M5 31 27 4h9L14 36H5z" fill="#77b84a"/><path d="M31 4h5v14c0 10-7 18-18 18h-4z" fill="#07634e"/><path d="M5 31 27 4" stroke="#e8f4d7" stroke-width="1.3"/></svg></span>
-    <span><strong>DESA</strong> DIGITAL</span>
+    <span><strong>DESA</strong> MAKASARI</span>
   </a>
   <nav class="main-nav" aria-label="Navigasi utama">
     <a class="<?= $page==='home'?'active':'' ?>" href="<?= e(app_url('home')) ?>">Beranda</a>
@@ -718,7 +718,7 @@ $title = $pageTitles[$page] ?? 'DESA MAKASARI';
 <?php endif; ?>
 </main>
 
-<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true">◆</span><span><strong>DESA</strong> DIGITAL</span></a><p>Layanan desa, kini lebih dekat.<br>Informasi publik dan pelayanan warga dalam satu tempat.</p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('layanan')) ?>">Layanan Surat</a><a href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a><a href="<?= e(app_url('track')) ?>">Lacak Pengajuan</a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> DESA MAKASARI</span><span>Pelayanan publik yang mudah, cepat, dan transparan.</span></div></footer>
+<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true">◆</span><span><strong>DESA</strong> MAKASARI</span></a><p>Layanan desa, kini lebih dekat.<br>Informasi publik dan pelayanan warga dalam satu tempat.</p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('layanan')) ?>">Layanan Surat</a><a href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a><a href="<?= e(app_url('track')) ?>">Lacak Pengajuan</a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> DESA MAKASARI</span><span>Pelayanan publik yang mudah, cepat, dan transparan.</span></div></footer>
 
 <nav class="mobile-drawer" id="mobile-drawer" hidden aria-label="Menu tambahan">
   <a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('umkm')) ?>">UMKM & Wisata</a><a href="<?= e(app_url('peta')) ?>">Peta Desa</a><a href="<?= e(app_url('transparansi')) ?>">Transparansi Anggaran</a><a href="<?= e(app_url('kontak')) ?>">Kontak</a>
