@@ -79,12 +79,18 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do
-            if curl --fail --silent --show-error http://127.0.0.1:8080/index.php?page=home -o /tmp/desa-digital-home.html; then
+            if curl --fail --silent --show-error -D /tmp/desa-digital-home-headers.txt http://127.0.0.1:8080/index.php?page=home -o /tmp/desa-digital-home.html; then
               break
             fi
             sleep 1
           done
           test -s /tmp/desa-digital-home.html
+          test -s /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^cache-control: private, no-store, max-age=0' /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^pragma: no-cache' /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^x-content-type-options: nosniff' /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^x-frame-options: DENY' /tmp/desa-digital-home-headers.txt
+          grep -Fqi "frame-ancestors 'none'" /tmp/desa-digital-home-headers.txt
           grep -F 'Layanan desa,' /tmp/desa-digital-home.html
           # Guard the main visual sections from accidental removal during UI changes.
           grep -F 'Ajukan Surat' /tmp/desa-digital-home.html
