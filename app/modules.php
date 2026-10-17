@@ -217,10 +217,13 @@ function module_handle_post(): void {
                 $gender=(string)($_POST['gender'] ?? 'unknown');
                 $phone=trim((string)($_POST['phone'] ?? ''));
                 if (!preg_match('/^[0-9]{16}$/',$nik)) throw new RuntimeException('NIK harus terdiri dari 16 digit angka.');
-                if (mb_strlen($familyNo)<5 || mb_strlen($familyNo)>32) throw new RuntimeException('Nomor KK harus diisi dengan benar.');
+                if (!preg_match('/^[0-9]{16}$/',$familyNo)) throw new RuntimeException('Nomor KK harus terdiri dari 16 digit angka.');
                 if (mb_strlen($name)<3 || mb_strlen($name)>160 || mb_strlen($address)<5) throw new RuntimeException('Nama atau alamat belum valid.');
                 if (!in_array($gender,['L','P','unknown'],true)) throw new RuntimeException('Pilihan jenis kelamin tidak valid.');
                 if ($birth!=='' && !preg_match('/^\d{4}-\d{2}-\d{2}$/',$birth)) throw new RuntimeException('Tanggal lahir tidak valid.');
+                $stmt=$pdo->prepare('SELECT id FROM family_records WHERE family_number=? LIMIT 1');
+                $stmt->execute([$familyNo]);
+                if ($stmt->fetchColumn()) throw new RuntimeException('Nomor KK sudah ada dalam sistem atau arsip. Minta Admin Desa memeriksa data keluarga yang sudah tercatat.');
                 $pdo->beginTransaction();
                 try {
                     $stmt=$pdo->prepare('SELECT id FROM residents WHERE nik=? LIMIT 1'); $stmt->execute([$nik]);
