@@ -14,7 +14,7 @@ Versi awal pengembangan. Jangan gunakan untuk data warga sungguhan sebelum pengu
 - Data wilayah dan penduduk dengan pembatasan akses pada sisi server.
 - Dokumen warga bersifat privat, dengan audit akses, status pemeriksaan, dan riwayat versi.
 - Pencegahan data ganda dan alur verifikasi perubahan warga.
-- Pengajuan surat, pelacakan, koreksi/revisi pada pengajuan yang sama, pengaduan, berita, serta CMS dengan draf/pratinjau/terbit/arsip.
+- Pengajuan surat dengan lampiran privat, pelacakan, revisi pada kode pengajuan yang sama, persetujuan bertahap, nomor surat unik, PDF templat yang memakai snapshot kop desa, pengaduan, berita, dan CMS draf/pratinjau/terbit/arsip.
 - Ekspor yang dibatasi kewenangan dan wilayah, backup terpisah, serta audit aktivitas.
 
 ## Rancangan visual
