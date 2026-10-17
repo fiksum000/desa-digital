@@ -45,7 +45,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (opening) mobileDrawer.removeAttribute('hidden');
       else mobileDrawer.setAttribute('hidden', '');
       navToggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
-      navToggle.setAttribute('aria-label', opening ? 'Tutup menu tambahan' : 'Buka menu tambahan');
+      navToggle.setAttribute('aria-label', opening
+        ? (navToggle.getAttribute('data-close-label') || 'Tutup menu tambahan')
+        : (navToggle.getAttribute('data-open-label') || 'Buka menu tambahan'));
     });
     document.addEventListener('click', (event) => {
       if (!mobileDrawer.contains(event.target) && !navToggle.contains(event.target)) {
