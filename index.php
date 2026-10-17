@@ -166,6 +166,7 @@ function save_service_request_files(PDO $pdo, int $requestId, int $userId, array
 require_once __DIR__ . '/app/modules.php';
 module_serve_private_document();
 module_serve_private_service_file();
+module_serve_service_letter_pdf();
 module_serve_export();
 module_handle_post();
 
@@ -363,10 +364,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (in_array($newStatus, ['approved','rejected','ready','completed'], true) && !in_array($user['role'], ['admin_desa','kepala_desa'], true)) {
                 throw new RuntimeException('Persetujuan/keputusan akhir harus dilakukan admin desa atau kepala desa.');
             }
-            $stmt = $pdo->prepare('SELECT id,status FROM service_requests WHERE id=?');
+            $stmt = $pdo->prepare('SELECT id,status,letter_number FROM service_requests WHERE id=?');
             $stmt->execute([$id]); $before = $stmt->fetch();
             if (!$before) throw new RuntimeException('Pengajuan tidak ditemukan.');
             if (!module_service_status_transition_allowed((string)$before['status'], $newStatus)) throw new RuntimeException('Perubahan status tidak sesuai alur pelayanan surat. Muat ulang halaman dan periksa status terbaru.');
+            if ($newStatus === 'ready' && trim((string)($before['letter_number'] ?? '')) === '') throw new RuntimeException('Terbitkan nomor surat terlebih dahulu sebelum menandai surat siap diambil.');
             $stmt = $pdo->prepare('UPDATE service_requests SET status=?,public_status_note=?,internal_note=?,assigned_to=?,approved_by=CASE WHEN ? IN (\'approved\',\'rejected\') THEN ? ELSE approved_by END,approved_at=CASE WHEN ? IN (\'approved\',\'rejected\') THEN NOW() ELSE approved_at END,completed_at=CASE WHEN ?=\'completed\' THEN NOW() ELSE completed_at END WHERE id=? AND status=?');
             $stmt->execute([$newStatus,mb_substr($publicNote,0,500),mb_substr($internalNote,0,4000),(int)$user['id'],$newStatus,(int)$user['id'],$newStatus,$newStatus,(int)$id,(string)$before['status']]);
             if ($stmt->rowCount() !== 1) throw new RuntimeException('Status pengajuan berubah sebelum tersimpan. Muat ulang antrean lalu coba lagi.');
