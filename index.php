@@ -22,14 +22,14 @@ function status_text(string $status): string {
         'submitted'=>'Diajukan','in_review'=>'Sedang diperiksa','revision_requested'=>'Perlu perbaikan',
         'approved'=>'Disetujui','rejected'=>'Ditolak','ready'=>'Siap diambil','completed'=>'Selesai',
         'cancelled'=>'Dibatalkan','received'=>'Diterima','in_progress'=>'Ditindaklanjuti',
-        'waiting_reporter'=>'Menunggu keterangan','resolved'=>'Tuntas','published'=>'Terbit','draft'=>'Draf',
+        'waiting_reporter'=>'Menunggu keterangan','conflict'=>'Konflik data','resolved'=>'Tuntas','published'=>'Terbit','draft'=>'Draf',
         'archived'=>'Arsip'
     ][$status] ?? ucfirst(str_replace('_',' ',$status));
 }
 function status_class(string $status): string {
     return in_array($status, ['approved','completed','resolved','published','ready'], true) ? 'good'
       : (in_array($status, ['rejected','cancelled','archived'], true) ? 'bad'
-      : (in_array($status, ['revision_requested','waiting_reporter'], true) ? 'warn' : 'neutral'));
+      : (in_array($status, ['revision_requested','waiting_reporter','conflict'], true) ? 'warn' : 'neutral'));
 }
 function safe_slug(string $value): string {
     $value = strtolower(trim($value));
