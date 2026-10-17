@@ -21,7 +21,7 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 6. Periksa `docker compose ps` dan `docker compose logs --tail=100 web db`.
 7. Buat akun admin awal melalui terminal trusted container menggunakan `php bin/create_admin.php <username> \"<Nama Admin>\" '<sandi-panjang>'`. Hindari menuliskan sandi asli di riwayat shell; gunakan mekanisme secret management yang sesuai pada server.
 8. Untuk dashboard pemilik tingkat tertinggi, jalankan `php bin/migrate_owner_role.php` pada database lama, lalu buat Owner pertama memakai `php bin/create_owner.php <username> <nama-lengkap> <sandi-minimal-20-karakter>`. Jalankan hanya dari terminal tepercaya; jangan memasukkan sandi ke URL, chat, atau log. Schema baru sudah memuat role Owner.
-8. Buka halaman melalui port lokal yang dipilih. Jangan buka port database ke internet.
+9. Buka halaman melalui port lokal yang dipilih. Jangan buka port database ke internet.
 
 ## Keamanan sebelum publik
 
