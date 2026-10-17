@@ -93,6 +93,29 @@ document.addEventListener('DOMContentLoaded', () => {
   focusInputs.forEach((input) => input.addEventListener('input', updateHeroFocus));
   updateHeroFocus();
 
+  // Keep the large public-copy editor practical: filter settings by their label/key.
+  const siteSettingFilter = document.querySelector('[data-site-setting-filter]');
+  if (siteSettingFilter) {
+    const settingElements = Array.from(document.querySelectorAll('[data-site-setting]'));
+    const sectionHeadings = Array.from(document.querySelectorAll('#site-content-form .cms-subheading'));
+    const countElement = document.getElementById('site-setting-filter-count');
+    const filterSettings = () => {
+      const query = siteSettingFilter.value.trim().toLocaleLowerCase();
+      let visible = 0;
+      settingElements.forEach((element) => {
+        const haystack = ((element.getAttribute('data-setting-key') || '') + ' ' + (element.textContent || '')).toLocaleLowerCase();
+        const shown = query === '' || haystack.includes(query);
+        element.hidden = !shown;
+        const preview = element.nextElementSibling;
+        if (preview && preview.classList.contains('cms-image-preview')) preview.hidden = !shown;
+        if (shown) visible++;
+      });
+      sectionHeadings.forEach((heading) => { heading.hidden = query !== ''; });
+      if (countElement) countElement.textContent = query === '' ? 'Semua pengaturan ditampilkan.' : visible + ' pengaturan cocok.';
+    };
+    siteSettingFilter.addEventListener('input', filterSettings);
+  }
+
   // Preview each replacement image before it is uploaded.
   const imagePreviewUrls=new Map();
   document.querySelectorAll('[data-preview-image-key]').forEach((input)=>{
