@@ -1,4 +1,13 @@
 Options -Indexes
-<FilesMatch "^(\.env|schema\.sql|composer\.(json|lock)|Dockerfile|docker-compose.*\.yml)$">
+
+# Deny internal source/config/storage paths when this project is served by Apache
+# with mod_rewrite enabled. Docker's VirtualHost also enforces these restrictions.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteRule ^(app|bin|docker|docs|tests|storage|\.git|\.github|vendor|node_modules)(/|$) - [F,L,NC]
+</IfModule>
+
+# Keep private and operational root files out of HTTP responses.
+<FilesMatch "^(\.env($|\.)|schema\.sql|composer\.(json|lock)|Dockerfile|docker-compose.*\.yml|\.gitignore|\.dockerignore)$">
   Require all denied
 </FilesMatch>
