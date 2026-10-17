@@ -15,7 +15,7 @@ function load_text(string $relative): string {
 }
 foreach ([
     'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css',
-    'assets/app.js', 'assets/village-hero.svg', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php', 'bin/backup.sh', 'bin/restore.sh',
+    'assets/app.js', 'assets/village-hero.svg', 'assets/village-hero.webp', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php', 'bin/backup.sh', 'bin/restore.sh',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
     check_true(is_file($root . '/' . $relative), "Missing required file: {$relative}");
@@ -73,7 +73,7 @@ foreach ([
 
 $index = load_text('index.php');
 foreach ([
-    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', 'user_notifications WHERE user_id=? ORDER BY',
+    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', "site_val('hero_image','assets/village-hero.webp')", 'user_notifications WHERE user_id=? ORDER BY',
     'verify_csrf()', 'revision_requested',
     'SELECT tracking_code', "app_url('layanan',["
 ] as $needle) {
