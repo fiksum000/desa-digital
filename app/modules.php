@@ -11,13 +11,24 @@ function module_require_role(array $roles): array {
 
 function module_is_allowed_rt(array $user, int $rtId): bool {
     if ($rtId < 1) return false;
-    if (($user['role'] ?? '') === 'rt') return (int)($user['rt_id'] ?? 0) === $rtId;
-    if (($user['role'] ?? '') === 'rw') {
-        $stmt = db()->prepare('SELECT id FROM rt_units WHERE id=? AND rw_id=? AND is_active=1');
+    $role=(string)($user['role'] ?? '');
+    if ($role === 'rt') {
+        if ((int)($user['rt_id'] ?? 0) !== $rtId) return false;
+        $stmt=db()->prepare('SELECT rt.id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.is_active=1 AND rw.is_active=1 LIMIT 1');
+        $stmt->execute([$rtId]);
+        return (bool)$stmt->fetchColumn();
+    }
+    if ($role === 'rw') {
+        $stmt = db()->prepare('SELECT rt.id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.rw_id=? AND rt.is_active=1 AND rw.is_active=1 LIMIT 1');
         $stmt->execute([$rtId, (int)($user['rw_id'] ?? 0)]);
         return (bool)$stmt->fetchColumn();
     }
-    return in_array(($user['role'] ?? ''), ['petugas','admin_desa','kepala_desa'], true);
+    if (in_array($role, ['petugas','admin_desa','kepala_desa'], true)) {
+        $stmt=db()->prepare('SELECT rt.id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.is_active=1 AND rw.is_active=1 LIMIT 1');
+        $stmt->execute([$rtId]);
+        return (bool)$stmt->fetchColumn();
+    }
+    return false;
 }
 
 function module_resident_scope(array $user, int $residentId): array {
