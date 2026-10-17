@@ -35,6 +35,14 @@ check_true(module_can_access_service_file(['id'=>42,'role'=>'warga'], $filePolic
 check_true(!module_can_access_service_file(['id'=>43,'role'=>'warga'], $filePolicy), 'A resident must not access another resident service request attachments.');
 check_true(module_can_access_service_file(['id'=>8,'role'=>'petugas'], $filePolicy), 'Authorized service staff must be able to process request attachments.');
 check_true(!module_can_access_service_file(['id'=>9,'role'=>'rt'], $filePolicy), 'RT accounts must not access the private service attachment endpoint.');
+check_true(module_service_status_transition_allowed('submitted','in_review'), 'A submitted request may enter review.');
+check_true(!module_service_status_transition_allowed('submitted','approved'), 'A submitted request must not skip the review stage.');
+check_true(module_service_status_transition_allowed('in_review','approved'), 'A reviewed request may be approved by an authorized final approver.');
+check_true(!module_service_status_transition_allowed('revision_requested','approved'), 'A request after revision must return to review before approval.');
+check_true(module_service_status_transition_allowed('approved','ready'), 'An approved request may be marked ready for collection.');
+check_true(!module_service_status_transition_allowed('approved','completed'), 'An approved request must not skip the ready-for-collection stage.');
+check_true(module_service_status_transition_allowed('ready','completed'), 'A ready request may be completed.');
+check_true(!module_service_status_transition_allowed('completed','in_review'), 'A completed request must remain closed.');
 
 putenv('APP_KEY=' . str_repeat('b', 64));
 check_true(decrypt_private_identifier($encryptedNik) === null, 'Ciphertext tidak boleh bisa dibuka dengan APP_KEY yang berbeda.');
@@ -98,6 +106,7 @@ foreach ([
     'function module_serve_private_document',
     'function module_serve_private_service_file',
     'function module_can_access_service_file',
+    'function module_service_status_transition_allowed',
     'function module_serve_export',
     'function module_upload_private_file',
     'module_import_residents',
