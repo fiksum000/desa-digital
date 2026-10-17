@@ -170,7 +170,8 @@ $htaccess = load_text('.htaccess');
 check_true(str_contains($htaccess, 'RewriteRule ^(app|bin|docker|docs|tests|storage|'), 'Apache rewrite rules must block internal and private directories when served outside Docker.');
 check_true(str_contains($htaccess, '[F,L,NC]'), 'Internal path blocking must return a forbidden response.');
 check_true(str_contains($htaccess, '.env(\\..*)?'), 'Environment variants must not be exposed over HTTP.');
-check_true(str_contains($htaccess, '.*~)
+check_true(str_contains($htaccess, '.*~)$'), 'Temporary editor backups must not be exposed over HTTP.');
+$vhost = load_text('docker/apache-vhost.conf');
 check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
 check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
 $compose = load_text('docker-compose.yml');
