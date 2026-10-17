@@ -1,0 +1,11 @@
+.env
+/vendor/
+/node_modules/
+/storage/private/**
+!/storage/private/.gitkeep
+/storage/logs/**
+!/storage/logs/.gitkeep
+/assets/uploads/**
+!/assets/uploads/.gitkeep
+.DS_Store
+*.log
