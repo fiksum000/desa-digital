@@ -92,12 +92,12 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 foreach($rows as $item) {
                     echo '<article class="news-card">';
                     if(!empty($item['image_key'])) echo '<div class="news-image"><img src="'.e($item['image_key']).'" alt="'.e($item['alt_text'] ?: $item['title']).'"></div>';
-                    else echo '<div class="news-image"><img src="'.e(site_val('news_fallback_image','assets/village-hero.svg')).'" alt="Ilustrasi desa"></div>';
+                    else echo '<div class="news-image"><img src="'.e(site_image_val('news_fallback_image','assets/village-hero.svg')).'" alt="Ilustrasi desa"></div>';
                     echo '<div class="news-content"><span class="status-pill neutral">'.e(strtoupper($item['kind'])).'</span><h3>'.e($item['title']).'</h3>';
                     if(!empty($item['excerpt'])) echo '<p>'.e($item['excerpt']).'</p>';
                     echo '<p>'.nl2br(e($item['description'])).'</p>';
-                    if(!empty($item['address'])) echo '<p><strong>Lokasi:</strong> '.e($item['address']).'</p>';
-                    if(!empty($item['contact'])) echo '<p><strong>Kontak:</strong> '.e($item['contact']).'</p>';
+                    if(!empty($item['address'])) echo '<p><strong>'.e(site_val('directory_location_label','Lokasi:')).'</strong> '.e($item['address']).'</p>';
+                    if(!empty($item['contact'])) echo '<p><strong>'.e(site_val('directory_contact_label','Kontak:')).'</strong> '.e($item['contact']).'</p>';
                     echo '</div></article>';
                 }
                 echo '</div>';
@@ -108,7 +108,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         $mapUrl=site_val('map_public_url','');
         echo '<section class="panel narrow-panel"><span class="profile-icon">⌖</span><h2>'.e(site_val('map_location_title','Lokasi wilayah desa')).'</h2>';
         if($mapUrl!=='' && filter_var($mapUrl,FILTER_VALIDATE_URL) && parse_url($mapUrl,PHP_URL_SCHEME)==='https') {
-            echo '<p>'.e(site_val('map_intro','Peta resmi desa tersedia melalui tautan berikut.')).'</p><a class="button button-primary" href="'.e($mapUrl).'" target="_blank" rel="noopener noreferrer">'.e(site_val('map_link_text','Buka peta desa ↗')).'</a>';
+            echo '<p>'.e(site_val('map_public_link_intro','Peta resmi desa tersedia melalui tautan berikut.')).'</p><a class="button button-primary" href="'.e($mapUrl).'" target="_blank" rel="noopener noreferrer">'.e(site_val('map_link_text','Buka peta desa ↗')).'</a>';
         } else echo '<p>'.e(site_val('map_empty_text','Tautan peta belum diatur. Admin Desa dapat menambahkan tautan peta HTTPS melalui menu Tampilan Website.')).'</p>';
         echo '</section>';
     } elseif($mvPage==='transparansi') {
@@ -120,8 +120,8 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 echo '<div class="list-cards">';
                 foreach($rows as $item) {
                     echo '<article class="list-card"><span class="service-icon">▤</span><div><h3>'.e($item['title']).' · '.e((string)$item['fiscal_year']).'</h3><p>'.nl2br(e($item['summary'])).'</p>';
-                    if($item['amount']!==null) echo '<p><strong>Nilai ringkasan:</strong> Rp '.e(number_format((float)$item['amount'],0,',','.')).'</p>';
-                    if(!empty($item['document_key']) && preg_match('#^assets/uploads/[a-f0-9]{36}\.pdf$#',(string)$item['document_key'])) echo '<a class="text-link" href="'.e($item['document_key']).'" target="_blank" rel="noopener noreferrer">Buka dokumen PDF ↗</a>';
+                    if($item['amount']!==null) echo '<p><strong>'.e(site_val('budget_amount_label','Nilai ringkasan:')).'</strong> Rp '.e(number_format((float)$item['amount'],0,',','.')).'</p>';
+                    if(!empty($item['document_key']) && preg_match('#^assets/uploads/[a-f0-9]{36}\.pdf$#',(string)$item['document_key'])) echo '<a class="text-link" href="'.e($item['document_key']).'" target="_blank" rel="noopener noreferrer">'.e(site_val('budget_pdf_link_label','Buka dokumen PDF ↗')).'</a>';
                     echo '</div></article>';
                 }
                 echo '</div>';
@@ -468,7 +468,66 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
           'transparansi_title'=>'Judul transparansi anggaran','transparansi_empty_title'=>'Judul laporan anggaran kosong',
           'transparansi_empty_text'=>'Keterangan laporan anggaran kosong','contact_title'=>'Judul halaman kontak','office_address_title'=>'Judul alamat kantor',
           'contact_phone_title'=>'Judul telepon/WhatsApp','contact_info_title'=>'Judul informasi layanan kontak',
-          'page_unavailable_title'=>'Judul halaman tidak tersedia','page_unavailable_text'=>'Deskripsi halaman tidak tersedia','page_home_button'=>'Tombol kembali ke beranda'
+          'page_unavailable_title'=>'Judul halaman tidak tersedia','page_unavailable_text'=>'Deskripsi halaman tidak tersedia','page_home_button'=>'Tombol kembali ke beranda',
+          '__group_public_forms'=>'Label formulir dan teks tambahan website publik',
+          'services_eta_prefix'=>'Awalan estimasi layanan',
+          'services_eta_suffix'=>'Akhiran estimasi layanan',
+          'services_apply_button'=>'Tombol ajukan layanan',
+          'services_login_for_apply'=>'Teks masuk untuk mengajukan',
+          'services_empty_text'=>'Pesan saat belum ada layanan',
+          'service_apply_form_title'=>'Judul formulir pengajuan',
+          'service_apply_type_label'=>'Label jenis layanan',
+          'service_apply_subject_label'=>'Label keperluan/subjek',
+          'service_apply_details_label'=>'Label keterangan tambahan',
+          'service_apply_attachments_label'=>'Label lampiran persyaratan',
+          'service_apply_attachment_hint'=>'Petunjuk format lampiran',
+          'service_apply_submit_button'=>'Tombol kirim pengajuan',
+          'complaint_category_umum'=>'Kategori pengaduan umum',
+          'complaint_category_infrastruktur'=>'Kategori pengaduan infrastruktur',
+          'complaint_category_pelayanan'=>'Kategori pengaduan pelayanan',
+          'complaint_category_lingkungan'=>'Kategori pengaduan lingkungan',
+          'complaint_category_sosial'=>'Kategori pengaduan sosial',
+          'tracking_public_note_fallback'=>'Pesan saat belum ada catatan pelacakan',
+          'tracking_code_label'=>'Label kode pelacakan',
+          'tracking_sent_label'=>'Label tanggal pengajuan',
+          'tracking_last_update_label'=>'Label pembaruan terakhir',
+          'login_instructions'=>'Petunjuk formulir masuk',
+          'login_username_label'=>'Label username masuk',
+          'login_password_label'=>'Label kata sandi masuk',
+          'register_name_label'=>'Label nama lengkap',
+          'register_username_label'=>'Label username pendaftaran',
+          'register_email_label'=>'Label email pendaftaran',
+          'register_email_hint'=>'Petunjuk email opsional',
+          'register_password_label'=>'Label kata sandi pendaftaran',
+          'article_body_back_label'=>'Tautan kembali dari artikel',
+          'directory_location_label'=>'Label lokasi UMKM/wisata',
+          'directory_contact_label'=>'Label kontak UMKM/wisata',
+          'map_public_link_intro'=>'Pengantar tautan peta',
+          'budget_amount_label'=>'Label nilai ringkasan anggaran',
+          'budget_pdf_link_label'=>'Tautan dokumen PDF anggaran',
+          'mobile_nav_home'=>'Label navigasi HP beranda',
+          'mobile_nav_services'=>'Label navigasi HP layanan',
+          'mobile_nav_news'=>'Label navigasi HP berita',
+          'mobile_nav_complaints'=>'Label navigasi HP pengaduan',
+          'mobile_nav_profile'=>'Label navigasi HP profil',
+          'mobile_nav_login'=>'Label navigasi HP masuk',
+          'status_submitted'=>'Status diajukan',
+          'status_in_review'=>'Status sedang diperiksa',
+          'status_revision_requested'=>'Status perlu perbaikan',
+          'status_approved'=>'Status disetujui',
+          'status_rejected'=>'Status ditolak',
+          'status_ready'=>'Status siap diambil',
+          'status_completed'=>'Status selesai',
+          'status_cancelled'=>'Status dibatalkan',
+          'status_received'=>'Status diterima',
+          'status_in_progress'=>'Status ditindaklanjuti',
+          'status_waiting_reporter'=>'Status menunggu keterangan',
+          'status_conflict'=>'Status konflik data',
+          'status_resolved'=>'Status tuntas',
+          'status_published'=>'Status terbit',
+          'status_draft'=>'Status draf',
+          'status_archived'=>'Status arsip',
+          '__group_tracking_status'=>'Label status yang tampil di pelacakan publik'
         ];
         echo '<section class="panel"><h2>Editor konten</h2><form method="post" enctype="multipart/form-data" id="site-content-form" class="form-grid">'.csrf_field().'<input type="hidden" name="action" value="module_save_site">';
         $siteDefaults = [
@@ -506,12 +565,69 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
           'transparansi_title'=>'Transparansi Anggaran','transparansi_intro'=>'Laporan yang tersedia untuk publik. Informasi ini hanya ditampilkan setelah diterbitkan oleh Admin Desa.',
           'transparansi_empty_title'=>'Belum ada laporan anggaran yang diterbitkan.','transparansi_empty_text'=>'Laporan akan tampil setelah diperiksa dan disetujui.',
           'contact_title'=>'Kontak Desa','contact_intro'=>'Informasi resmi kantor desa dan cara menghubungi petugas.','office_address_title'=>'Alamat kantor','contact_phone_title'=>'Telepon / WhatsApp','contact_info_title'=>'Informasi layanan',
-          'page_unavailable_title'=>'Halaman tidak ditemukan','page_unavailable_text'=>'Alamat yang kamu buka tidak tersedia.','page_home_button'=>'Kembali ke beranda'
+          'page_unavailable_title'=>'Halaman tidak ditemukan','page_unavailable_text'=>'Alamat yang kamu buka tidak tersedia.','page_home_button'=>'Kembali ke beranda',
+          'services_eta_prefix'=>'Estimasi',
+          'services_eta_suffix'=>'hari kerja',
+          'services_apply_button'=>'Ajukan',
+          'services_login_for_apply'=>'Masuk untuk ajukan',
+          'services_empty_text'=>'Belum ada layanan yang diterbitkan.',
+          'service_apply_form_title'=>'Formulir pengajuan',
+          'service_apply_type_label'=>'Jenis layanan',
+          'service_apply_subject_label'=>'Keperluan / subjek',
+          'service_apply_details_label'=>'Keterangan tambahan',
+          'service_apply_attachments_label'=>'Lampiran persyaratan (opsional, maksimal 5 file)',
+          'service_apply_attachment_hint'=>'PDF/JPG/PNG/WebP, maksimal 5 MB per file.',
+          'service_apply_submit_button'=>'Kirim pengajuan →',
+          'complaint_category_umum'=>'Umum',
+          'complaint_category_infrastruktur'=>'Infrastruktur',
+          'complaint_category_pelayanan'=>'Pelayanan',
+          'complaint_category_lingkungan'=>'Lingkungan',
+          'complaint_category_sosial'=>'Sosial',
+          'tracking_public_note_fallback'=>'Belum ada catatan pembaruan untuk ditampilkan.',
+          'tracking_code_label'=>'Kode',
+          'tracking_sent_label'=>'Dikirim',
+          'tracking_last_update_label'=>'Pembaruan terakhir',
+          'login_instructions'=>'Gunakan username dan kata sandi yang terdaftar.',
+          'login_username_label'=>'Username',
+          'login_password_label'=>'Kata sandi',
+          'register_name_label'=>'Nama lengkap',
+          'register_username_label'=>'Username',
+          'register_email_label'=>'Email (opsional)',
+          'register_email_hint'=>'Tidak wajib diisi.',
+          'register_password_label'=>'Kata sandi',
+          'article_body_back_label'=>'← Kembali ke berita',
+          'directory_location_label'=>'Lokasi:',
+          'directory_contact_label'=>'Kontak:',
+          'map_public_link_intro'=>'Peta resmi desa tersedia melalui tautan berikut.',
+          'budget_amount_label'=>'Nilai ringkasan:',
+          'budget_pdf_link_label'=>'Buka dokumen PDF ↗',
+          'mobile_nav_home'=>'Beranda',
+          'mobile_nav_services'=>'Layanan',
+          'mobile_nav_news'=>'Berita',
+          'mobile_nav_complaints'=>'Pengaduan',
+          'mobile_nav_profile'=>'Profil',
+          'mobile_nav_login'=>'Masuk',
+          'status_submitted'=>'Diajukan',
+          'status_in_review'=>'Sedang diperiksa',
+          'status_revision_requested'=>'Perlu perbaikan',
+          'status_approved'=>'Disetujui',
+          'status_rejected'=>'Ditolak',
+          'status_ready'=>'Siap diambil',
+          'status_completed'=>'Selesai',
+          'status_cancelled'=>'Dibatalkan',
+          'status_received'=>'Diterima',
+          'status_in_progress'=>'Ditindaklanjuti',
+          'status_waiting_reporter'=>'Menunggu keterangan',
+          'status_conflict'=>'Konflik data',
+          'status_resolved'=>'Tuntas',
+          'status_published'=>'Terbit',
+          'status_draft'=>'Draf',
+          'status_archived'=>'Arsip'
         ];
         foreach($keys as $key=>$label) {
             if(str_starts_with($key,'__group_')){echo '<div class="full-span cms-subheading"><h3>'.e($label).'</h3></div>';continue;}
             $value=site_val($key,$siteDefaults[$key]??'');
-            $isLong=in_array($key,['hero_subtitle','welcome_text','profil_sejarah','profil_potensi','umkm_intro','transparansi_intro','contact_intro','office_address','meta_description','footer_summary','footer_tagline','home_news_subtitle','home_no_news_text','services_intro','complaints_intro','complaints_login_text','complaints_wrong_role_text','tracking_intro','tracking_not_found','news_intro','news_empty_text','article_notfound_intro','profile_intro','profile_history_fallback','profile_potential_fallback','profile_contact_text','login_intro','register_intro','map_intro','map_empty_text','transparansi_empty_text','page_unavailable_text'],true);
+            $isLong=in_array($key,['hero_subtitle','welcome_text','profil_sejarah','profil_potensi','umkm_intro','transparansi_intro','contact_intro','office_address','meta_description','footer_summary','footer_tagline','home_news_subtitle','home_no_news_text','services_intro','complaints_intro','complaints_login_text','complaints_wrong_role_text','tracking_intro','tracking_not_found','news_intro','news_empty_text','article_notfound_intro','profile_intro','profile_history_fallback','profile_potential_fallback','profile_contact_text','login_intro','login_instructions','register_intro','register_email_hint','map_intro','map_public_link_intro','map_empty_text','transparansi_empty_text','service_apply_attachment_hint','tracking_public_note_fallback','page_unavailable_text'],true);
             $class=$isLong?' class="full-span"':'';
             echo '<label'.$class.'>'.e($label);
             if($isLong) echo '<textarea name="content['.e($key).']" rows="3" maxlength="20000" data-preview-key="'.e($key).'">'.e($value).'</textarea>';
