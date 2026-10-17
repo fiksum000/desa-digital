@@ -42,6 +42,68 @@ function module_resident_scope(array $user, int $residentId): array {
     return $resident;
 }
 
+/**
+ * Return an opaque, keyed fingerprint of the source resident/family state.
+ * PII is hashed before the snapshot is stored on a change request. Call with
+ * $forUpdate=true only inside a transaction; household row locks prevent a
+ * simultaneous edit from racing the approval check.
+ */
+function module_change_snapshot(int $residentId, int $familyId, string $changeType, bool $forUpdate = false): array {
+    if ($residentId < 1 || $familyId < 1) throw new RuntimeException('Data sumber usulan tidak valid.');
+    $pdo = db();
+    $lock = $forUpdate ? ' FOR UPDATE' : '';
+    $stmt = $pdo->prepare('SELECT id,family_number_hash,rt_id,address,status FROM family_records WHERE id=? LIMIT 1' . $lock);
+    $stmt->execute([$familyId]);
+    $family = $stmt->fetch();
+    if (!$family) throw new RuntimeException('Data keluarga sumber tidak ditemukan.');
+
+    $stmt = $pdo->prepare('SELECT id,family_id,rt_id,nik_hash,full_name,birth_date,gender,phone,relationship_to_head,resident_status FROM residents WHERE family_id=? ORDER BY id' . $lock);
+    $stmt->execute([$familyId]);
+    $members = $stmt->fetchAll();
+    $resident = null;
+    foreach ($members as $member) if ((int)$member['id'] === $residentId) { $resident = $member; break; }
+    if (!$resident) throw new RuntimeException('Data penduduk sumber tidak ditemukan dalam keluarga yang ditentukan.');
+
+    $key = private_identifier_key('change-snapshot');
+    $encode = static fn(array $data): string => json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $snapshot = [
+        'version' => 1,
+        'resident_id' => $residentId,
+        'family_id' => $familyId,
+        'resident_rt_id' => (int)$resident['rt_id'],
+        'family_rt_id' => (int)$family['rt_id'],
+        'resident_digest' => hash_hmac('sha256', $encode($resident), $key),
+        'family_digest' => hash_hmac('sha256', $encode($family), $key),
+    ];
+    if ($changeType === 'move_rt') {
+        $snapshot['household_digest'] = hash_hmac('sha256', $encode(array_values($members)), $key);
+    }
+    return $snapshot;
+}
+
+function module_change_snapshot_matches(array $request): bool {
+    $source = json_decode((string)($request['source_snapshot'] ?? ''), true);
+    if (!is_array($source)
+        || (int)($source['version'] ?? 0) !== 1
+        || (int)($source['resident_id'] ?? 0) !== (int)($request['resident_id'] ?? 0)
+        || (int)($source['family_id'] ?? 0) !== (int)($request['family_id'] ?? 0)
+        || empty($source['resident_digest'])
+        || empty($source['family_digest'])) return false;
+
+    $current = module_change_snapshot(
+        (int)$request['resident_id'],
+        (int)$request['family_id'],
+        (string)$request['change_type'],
+        true
+    );
+    if (!hash_equals((string)$source['resident_digest'], (string)$current['resident_digest'])
+        || !hash_equals((string)$source['family_digest'], (string)$current['family_digest'])) return false;
+    if (($request['change_type'] ?? '') === 'move_rt'
+        && (!isset($source['household_digest'])
+            || !hash_equals((string)$source['household_digest'], (string)($current['household_digest'] ?? '')))) return false;
+    return true;
+}
+
 function module_upload_private_file(array $file): array {
     if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
         throw new RuntimeException('Pilih file yang akan diunggah terlebih dahulu.');
