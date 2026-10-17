@@ -373,7 +373,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             audit_log((int)$user['id'], 'status_change', 'service_requests', (string)$id, ['status'=>$before['status']], ['status'=>$newStatus]);
             flash('Status pengajuan diperbarui.');
             redirect_to('admin');
-        } elseif ($action === 'save_news') {
+        } elseif ($action === 'issue_service_letter') {
+            $user = require_roles(['admin_desa','kepala_desa']);
+            $id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
+            $letterNumber = trim((string)($_POST['letter_number'] ?? ''));
+            if (!$id || !preg_match('/^[\\pL0-9][\\pL0-9 .\\/_-]{2,99}$/u', $letterNumber)) {
+                throw new RuntimeException('Nomor surat wajib diisi dengan format yang valid (3–100 karakter).');
+            }
+
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare('SELECT id,status,letter_number FROM service_requests WHERE id=? FOR UPDATE');
+                $stmt->execute([$id]);
+                $row = $stmt->fetch();
+                if (!$row || $row['status'] !== 'approved') {
+                    throw new RuntimeException('Nomor surat hanya dapat diterbitkan setelah pengajuan disetujui.');
+                }
+                if (trim((string)($row['letter_number'] ?? '')) !== '') {
+                    throw new RuntimeException('Nomor surat sudah diterbitkan. Gunakan tautan Unduh PDF, jangan membuat nomor kedua.');
+                }
+
+                $stmt = $pdo->query("SELECT content_key,content_value FROM site_content WHERE status='published'");
+                $site = [];
+                foreach ($stmt->fetchAll() as $item) $site[(string)$item['content_key']] = trim((string)$item['content_value']);
+                $required = [
+                    'village_name' => 'Nama desa',
+                    'office_address' => 'Alamat kantor desa',
+                    'village_regency' => 'Kabupaten/Kota',
+                    'village_province' => 'Provinsi',
+                    'village_head_name' => 'Nama kepala desa/pejabat penandatangan',
+                ];
+                $missing = [];
+                foreach ($required as $key => $label) {
+                    if (($site[$key] ?? '') === '') $missing[] = $label;
+                }
+                if ($missing) throw new RuntimeException('Lengkapi pengaturan Admin Desa → Tampilan Website terlebih dahulu: ' . implode(', ', $missing) . '.');
+
+                $snapshot = [];
+                foreach (['village_name','village_subdistrict','village_regency','village_province','village_head_name','village_head_title','office_address','office_phone'] as $key) {
+                    $snapshot[$key] = (string)($site[$key] ?? '');
+                }
+                $snapshotJson = json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+                $stmt = $pdo->prepare("UPDATE service_requests SET letter_number=?,letter_snapshot=?,letter_issued_by=?,letter_issued_at=NOW() WHERE id=? AND status='approved' AND letter_number IS NULL");
+                $stmt->execute([$letterNumber,$snapshotJson,(int)$user['id'],(int)$id]);
+                if ($stmt->rowCount() !== 1) throw new RuntimeException('Pengajuan berubah saat nomor surat diterbitkan. Muat ulang halaman lalu coba lagi.');
+                audit_log((int)$user['id'], 'issue_letter', 'service_requests', (string)$id, null, ['letter_number'=>$letterNumber]);
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
+            flash('Nomor surat sudah dicatat. Unduh dan periksa PDF sebelum menandai surat siap diambil.');
+            redirect_to('admin');
+} elseif ($action === 'save_news') {
             $user = require_roles(['petugas','admin_desa']);
             $id = filter_input(INPUT_POST, 'news_id', FILTER_VALIDATE_INT) ?: null;
             $title = trim((string)($_POST['title'] ?? ''));
