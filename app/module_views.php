@@ -146,8 +146,40 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             $where .= ($where?' AND ':' WHERE ').'(r.full_name LIKE ? OR RIGHT(r.nik,4)=? OR RIGHT(f.family_number,4)=?)';
             $params[]='%'.$search.'%';$params[]=$searchTail;$params[]=$searchTail;
         }
-        $stmt=$dbx->prepare("SELECT r.id,r.family_id,r.rt_id,r.full_name,RIGHT(r.nik,4) AS nik_last4,r.gender,r.birth_date,r.relationship_to_head,r.resident_status,r.created_at,f.family_number,f.status AS family_status,rt.number_code AS rt_code,rw.number_code AS rw_code,d.name AS dusun_name FROM residents r JOIN family_records f ON f.id=r.family_id JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id{$where} ORDER BY r.created_at DESC LIMIT 100");
+        $countStmt=$dbx->prepare("SELECT COUNT(*) FROM residents r JOIN family_records f ON f.id=r.family_id JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id{$where}");
+        $countStmt->execute($params);$residentsTotal=(int)$countStmt->fetchColumn();
+        $residentsPage=max(1,(int)($_GET['p'] ?? 1));$residentsPerPage=50;
+        $residentsPages=max(1,(int)ceil($residentsTotal/$residentsPerPage));$residentsPage=min($residentsPage,$residentsPages);
+        $residentsOffset=($residentsPage-1)*$residentsPerPage;
+        $stmt=$dbx->prepare("SELECT r.id,r.family_id,r.rt_id,r.full_name,RIGHT(r.nik,4) AS nik_last4,r.gender,r.birth_date,r.relationship_to_head,r.resident_status,r.created_at,f.family_number,f.status AS family_status,rt.number_code AS rt_code,rw.number_code AS rw_code,d.name AS dusun_name FROM residents r JOIN family_records f ON f.id=r.family_id JOIN rt_units rt ON rt.id=r.rt_id JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id{$where} ORDER BY r.created_at DESC LIMIT {$residentsPerPage} OFFSET {$residentsOffset}");
         $stmt->execute($params);$residents=$stmt->fetchAll();
+        if($role==='rt') {
+            $stmt=$dbx->prepare("SELECT r.id,r.family_id,r.full_name,RIGHT(r.nik,4) AS nik_last4,RIGHT(f.family_number,4) AS kk_last4,
+                NOT EXISTS (SELECT 1 FROM resident_documents dk WHERE dk.resident_id=r.id AND dk.document_type='ktp' AND dk.status='approved') AS missing_ktp,
+                NOT EXISTS (SELECT 1 FROM resident_documents df WHERE df.family_id=f.id AND df.document_type='kk' AND df.status='approved') AS missing_kk,
+                EXISTS (SELECT 1 FROM resident_documents dr WHERE dr.family_id=f.id AND (dr.resident_id=r.id OR dr.resident_id IS NULL) AND dr.status IN ('revision_requested','rejected')) AS needs_revision
+                FROM residents r JOIN family_records f ON f.id=r.family_id
+                WHERE r.rt_id=? AND r.resident_status<>'archived' AND f.status<>'archived'
+                AND (NOT EXISTS (SELECT 1 FROM resident_documents dk WHERE dk.resident_id=r.id AND dk.document_type='ktp' AND dk.status='approved')
+                  OR NOT EXISTS (SELECT 1 FROM resident_documents df WHERE df.family_id=f.id AND df.document_type='kk' AND df.status='approved')
+                  OR EXISTS (SELECT 1 FROM resident_documents dr WHERE dr.family_id=f.id AND (dr.resident_id=r.id OR dr.resident_id IS NULL) AND dr.status IN ('revision_requested','rejected')))
+                ORDER BY r.full_name LIMIT 100");
+            $stmt->execute([(int)$mvUser['rt_id']]);$incompleteRows=$stmt->fetchAll();
+            echo '<section class="panel"><div class="section-heading compact-heading"><div><h2>Data Belum Lengkap</h2><p>Daftar tindak lanjut awal memeriksa KTP tiap warga dan KK keluarga yang sudah disetujui petugas.</p></div><span class="status-pill '.($incompleteRows?'warn':'good').'">'.count($incompleteRows).' perlu tindak lanjut</span></div>';
+            if($incompleteRows) {
+                echo '<div class="table-wrap"><table><thead><tr><th>Warga / keluarga</th><th>Yang perlu ditindaklanjuti</th><th>Aksi</th></tr></thead><tbody>';
+                foreach($incompleteRows as $item) {
+                    $issues=[];
+                    if((int)$item['missing_ktp']===1) $issues[]='KTP belum disetujui';
+                    if((int)$item['missing_kk']===1) $issues[]='KK keluarga belum disetujui';
+                    if((int)$item['needs_revision']===1) $issues[]='Dokumen perlu diperbaiki/diunggah ulang';
+                    echo '<tr><td><strong>'.e($item['full_name']).'</strong><small>NIK akhir '.e($item['nik_last4']).' · KK akhir '.e($item['kk_last4']).'</small></td><td>'.e(implode(' · ',$issues)).'</td><td><a class="button button-small button-outline" href="'.e(app_url('dokumen',['resident_id'=>(int)$item['id']])).'">Tindak lanjuti</a></td></tr>';
+                }
+                echo '</tbody></table></div><p class="muted">Maksimal 100 entri ditampilkan. Gunakan pencarian di daftar penduduk untuk menemukan warga tertentu.</p>';
+            } else echo '<p>Semua warga pada cakupan daftar awal sudah memiliki KTP dan KK yang disetujui, tanpa dokumen yang perlu revisi.</p>';
+            echo '</section>';
+        }
+
         echo '<section class="panel"><div class="section-heading compact-heading"><div><h2>Daftar penduduk</h2><p>NIK ditampilkan sebagian. Pencarian dibatasi ke wilayah tugas untuk akun RT/RW.</p></div></div><form method="get" class="track-form large-track"><input type="hidden" name="page" value="rt-data"><input name="q" value="'.e($search).'" placeholder="Cari nama, 4 digit akhir NIK, atau KK"><button type="submit">Cari</button></form>';
         if($residents) {
             echo '<div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Penduduk</th><th>Wilayah</th><th>Status</th><th>Keluarga</th><th>Aksi</th></tr></thead><tbody>';
@@ -169,6 +201,13 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             }
             echo '</tbody></table></div>';
         } else echo '<p>Belum ada catatan untuk filter ini. Tidak ada data contoh yang ditampilkan sebagai data resmi.</p>';
+        if($residentsTotal>0) {
+            $fromRow=$residentsOffset+1;$toRow=min($residentsOffset+count($residents),$residentsTotal);
+            echo '<div class="button-row" style="justify-content:space-between;align-items:center;margin-top:16px"><span class="muted">Menampilkan '.(int)$fromRow.'–'.(int)$toRow.' dari '.(int)$residentsTotal.' warga · halaman '.(int)$residentsPage.' dari '.(int)$residentsPages.'</span><div class="button-row">';
+            if($residentsPage>1) echo '<a class="button button-small button-outline" href="'.e(app_url('rt-data',['q'=>$search,'p'=>$residentsPage-1])).'">← Sebelumnya</a>';
+            if($residentsPage<$residentsPages) echo '<a class="button button-small button-outline" href="'.e(app_url('rt-data',['q'=>$search,'p'=>$residentsPage+1])).'">Berikutnya →</a>';
+            echo '</div></div>';
+        }
         echo '</section>';
         if($role==='rt') echo '<section class="panel"><h2>Catatan operasional</h2><p>Data resmi tidak dapat diubah langsung melalui formulir ini. Gunakan “Usulkan perubahan”; petugas akan memeriksa sebelum perubahan disahkan.</p></section>';
     } elseif($mvPage==='rw-rekap') {
