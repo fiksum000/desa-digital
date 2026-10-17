@@ -10,13 +10,42 @@ permissions:
 jobs:
   php-checks:
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-pass
+          MARIADB_DATABASE: desa_digital
+          MARIADB_USER: ci_app
+          MARIADB_PASSWORD: ci-app-pass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: desa_digital
+      DB_USER: ci_app
+      DB_PASSWORD: ci-app-pass
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
           extensions: pdo_mysql, mbstring, fileinfo, iconv
+      - name: Install MariaDB client
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client
       - name: PHP syntax check
         run: find . -path './vendor' -prune -o -name '*.php' -type f -print0 | xargs -0 -n1 php -l
       - name: Project invariants
         run: php tests/invariants.php
+      - name: Initialize MariaDB schema
+        env:
+          DB_ROOT_PASSWORD: ci-root-pass
+        run: mariadb --host=127.0.0.1 --user=root --password="$DB_ROOT_PASSWORD" --database=desa_digital < schema.sql
+      - name: Database integration tests
+        run: php tests/schema_integration.php
