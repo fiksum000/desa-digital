@@ -31,6 +31,7 @@ function letter_migration_constraint_exists(PDO $pdo, string $table, string $con
 
 $columns = [
     'letter_number' => 'VARCHAR(100) NULL',
+    'letter_snapshot' => 'JSON NULL',
     'letter_issued_by' => 'BIGINT UNSIGNED NULL',
     'letter_issued_at' => 'DATETIME NULL',
 ];
