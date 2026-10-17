@@ -29,7 +29,8 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 - Pastikan setiap aksi admin diperiksa di sisi server, tidak hanya dengan menyembunyikan menu.
 - Uji akun dari RT berbeda agar tidak dapat mengakses warga, laporan, atau dokumen RT lain.
 - Uji data ganda NIK/KK, revisi surat, persetujuan berjenjang, unggah ulang dokumen, dan pergantian pengurus.
-- Siapkan pembatasan percobaan login, MFA admin jika tersedia, serta prosedur reset akun.
+- Login sekarang membatasi percobaan secara persisten: maksimal 5 kegagalan per akun dan 20 per alamat jaringan dalam jendela 10 menit. Kunci bucket adalah HMAC dari APP_KEY; alamat IP mentah tidak disimpan di tabel pembatasan.
+- Siapkan MFA admin jika tersedia, serta prosedur reset akun.
 - Buat backup terenkripsi database dan file upload di lokasi terpisah. Uji pemulihan, jangan hanya cek file backup ada.
 - Isi profil desa, kontak, jenis surat, syarat resmi, SOP dan pejabat penyetuju bersama pemerintah desa. Statistik kosong sengaja ditampilkan sebagai tanda strip, bukan angka rekaan.
 
@@ -37,7 +38,7 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 
 NIK dan nomor KK disimpan sebagai ciphertext yang dienkripsi dengan secretbox libsodium. Kolom yang dipakai pada daftar hanya berisi topeng `************1234`; HMAC berkunci dipakai untuk deteksi duplikasi dan indeks unik tanpa menyimpan nilai asli sebagai kolom pencarian. `APP_KEY` tidak dapat dipulihkan dari database; simpan salinan terenkripsi yang aksesnya sangat terbatas.
 
-Jika database lama sudah dibuat dari skema yang menyimpan NIK/KK sebagai teks biasa, ambil backup database dan APP_KEY terlebih dahulu lalu jalankan `php bin/migrate_private_identifiers.php` dari container web yang dipercaya setelah APP_KEY diatur dengan benar. Skrip berhenti jika kunci salah, data tidak bisa dinormalisasi, atau ditemukan duplikasi; jangan melewati error migrasi dengan mengubah data secara manual. Jangan pernah commit file .env, salinan database, NIK/KK, foto identitas, atau berkas warga ke GitHub. Semua lampiran warga wajib berada di penyimpanan privat dengan otorisasi per permintaan. Isi database dummy hanya boleh dipakai untuk pengujian.
+Jika database lama sudah dibuat dari skema yang menyimpan NIK/KK sebagai teks biasa atau belum memiliki tabel pembatasan login, ambil backup database dan APP_KEY terlebih dahulu lalu jalankan `php bin/migrate_private_identifiers.php` dari container web yang dipercaya setelah APP_KEY diatur dengan benar. Skrip berhenti jika kunci salah, data tidak bisa dinormalisasi, atau ditemukan duplikasi; jangan melewati error migrasi dengan mengubah data secara manual. Jangan pernah commit file .env, salinan database, NIK/KK, foto identitas, atau berkas warga ke GitHub. Semua lampiran warga wajib berada di penyimpanan privat dengan otorisasi per permintaan. Isi database dummy hanya boleh dipakai untuk pengujian.
 
 ## Pembaruan dari GitHub
 
