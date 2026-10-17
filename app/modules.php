@@ -1650,16 +1650,20 @@ function module_serve_admin_resident_bundle(): void {
             $zip->addFromString('README.txt', "Paket data pribadi Desa Digital. Hanya untuk penggunaan administrasi berwenang.\nDokumen yang disertakan berstatus disetujui. Jaga kerahasiaan dan hapus salinan sesuai kebijakan desa.\n");
             $ids = array_map(static fn($r) => (int)$r['resident_id'], $rows);
             $familyIds = array_values(array_unique(array_map(static fn($r) => (int)$r['family_id'], $rows)));
+            $rtIds = array_values(array_unique(array_map(static fn($r) => (int)$r['rt_id'], $rows)));
             if ($ids || $familyIds) {
                 $idPlaceholders = $ids ? implode(',', array_fill(0, count($ids), '?')) : 'NULL';
                 $familyPlaceholders = $familyIds ? implode(',', array_fill(0, count($familyIds), '?')) : 'NULL';
+                $rtPlaceholders = $rtIds ? implode(',', array_fill(0, count($rtIds), '?')) : 'NULL';
                 $docSql = "SELECT id,resident_id,family_id,document_type,storage_key,original_name,mime_type
                            FROM resident_documents
                            WHERE status='approved' AND document_type IN ('ktp','kk')
-                           AND (resident_id IN ({$idPlaceholders}) OR family_id IN ({$familyPlaceholders}))
+                           AND rt_id IN ({$rtPlaceholders})
+                           AND ((resident_id IN ({$idPlaceholders}) AND document_type='ktp')
+                                OR (family_id IN ({$familyPlaceholders}) AND document_type='kk'))
                            ORDER BY document_type,id";
                 $docStmt = $pdo->prepare($docSql);
-                $docStmt->execute(array_merge($ids, $familyIds));
+                $docStmt->execute(array_merge($rtIds, $ids, $familyIds));
                 $usedNames = [];
                 while ($doc = $docStmt->fetch()) {
                     $key = (string)$doc['storage_key'];
