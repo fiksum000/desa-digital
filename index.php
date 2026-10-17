@@ -366,9 +366,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare('SELECT id,status FROM service_requests WHERE id=?');
             $stmt->execute([$id]); $before = $stmt->fetch();
             if (!$before) throw new RuntimeException('Pengajuan tidak ditemukan.');
-            if (in_array($before['status'], ['completed','cancelled','rejected'], true)) throw new RuntimeException('Pengajuan sudah ditutup dan tidak dapat diubah langsung.');
-            $stmt = $pdo->prepare('UPDATE service_requests SET status=?,public_status_note=?,internal_note=?,assigned_to=?,approved_by=CASE WHEN ? IN (\'approved\',\'rejected\') THEN ? ELSE approved_by END,approved_at=CASE WHEN ? IN (\'approved\',\'rejected\') THEN NOW() ELSE approved_at END,completed_at=CASE WHEN ?=\'completed\' THEN NOW() ELSE completed_at END WHERE id=?');
-            $stmt->execute([$newStatus,mb_substr($publicNote,0,500),mb_substr($internalNote,0,4000),(int)$user['id'],$newStatus,(int)$user['id'],$newStatus,$newStatus,(int)$id]);
+            if (!module_service_status_transition_allowed((string)$before['status'], $newStatus)) throw new RuntimeException('Perubahan status tidak sesuai alur pelayanan surat. Muat ulang halaman dan periksa status terbaru.');
+            $stmt = $pdo->prepare('UPDATE service_requests SET status=?,public_status_note=?,internal_note=?,assigned_to=?,approved_by=CASE WHEN ? IN (\'approved\',\'rejected\') THEN ? ELSE approved_by END,approved_at=CASE WHEN ? IN (\'approved\',\'rejected\') THEN NOW() ELSE approved_at END,completed_at=CASE WHEN ?=\'completed\' THEN NOW() ELSE completed_at END WHERE id=? AND status=?');
+            $stmt->execute([$newStatus,mb_substr($publicNote,0,500),mb_substr($internalNote,0,4000),(int)$user['id'],$newStatus,(int)$user['id'],$newStatus,$newStatus,(int)$id,(string)$before['status']]);
+            if ($stmt->rowCount() !== 1) throw new RuntimeException('Status pengajuan berubah sebelum tersimpan. Muat ulang antrean lalu coba lagi.');
             audit_log((int)$user['id'], 'status_change', 'service_requests', (string)$id, ['status'=>$before['status']], ['status'=>$newStatus]);
             flash('Status pengajuan diperbarui.');
             redirect_to('admin');
