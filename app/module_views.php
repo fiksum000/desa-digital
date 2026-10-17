@@ -247,6 +247,17 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
                 echo '<tr><td><strong>'.e($r['full_name']??'Penduduk diarsipkan').'</strong><small>'.e($r['change_type']).' · RT '.e($r['source_rt']).($r['target_rt']?' → RT '.e($r['target_rt']):'').'</small><small>'.e(date('d M Y H:i',strtotime($r['created_at']))).'</small></td><td>'.e($r['reason']).'<small>'.e(implode(' · ',$summary) ?: 'Tidak ada field tambahan').'</small>';
                 if(!empty($r['review_note'])) echo '<small>Catatan petugas: '.e($r['review_note']).'</small>';
                 echo '</td><td><span class="status-pill '.e(status_class($r['status'])).'">'.e(status_text($r['status'])).'</span></td><td>';
+                if($role==='rt' && $r['status']==='revision_requested' && (int)$r['submitted_by']===(int)$mvUser['id']) {
+                    echo '<details class="revise-details"><summary>Perbaiki usulan</summary><form method="post" class="form-stack">'.csrf_field().'<input type="hidden" name="action" value="module_resubmit_change"><input type="hidden" name="change_id" value="'.(int)$r['id'].'">';
+                    if($r['change_type']==='update') {
+                        echo '<label>Nama lengkap baru (opsional)<input name="full_name" maxlength="160" value="'.e($data['full_name'] ?? '').'"></label><label>Tanggal lahir (opsional)<input type="date" name="birth_date" value="'.e($data['birth_date'] ?? '').'"></label><label>Jenis kelamin (opsional)<select name="gender"><option value="unknown"'.(($data['gender']??'')==='unknown'?' selected':'').'>Belum dipilih</option><option value="L"'.(($data['gender']??'')==='L'?' selected':'').'>Laki-laki</option><option value="P"'.(($data['gender']??'')==='P'?' selected':'').'>Perempuan</option></select></label><label>Telepon (opsional)<input name="phone" maxlength="30" value="'.e($data['phone'] ?? '').'"></label><label>Alamat (opsional)<textarea name="address" rows="2">'.e($data['address'] ?? '').'</textarea></label>';
+                    } elseif($r['change_type']==='move_rt') {
+                        echo '<label>RT tujuan<select name="target_rt_id"><option value="">Pilih RT tujuan</option>';
+                        foreach(module_rt_options() as $targetOption) echo '<option value="'.(int)$targetOption['id'].'"'.((int)$targetOption['id']===(int)$r['target_rt_id']?' selected':'').'>'.e(($targetOption['dusun_name']??'Dusun -').' / RW '.$targetOption['rw_code'].' / RT '.$targetOption['number_code']).'</option>';
+                        echo '</select></label>';
+                    }
+                    echo '<label>Alasan revisi<textarea name="reason" rows="3" minlength="8" maxlength="1000" required>'.e($r['reason']).'</textarea></label><button class="button button-small button-primary" type="submit">Kirim revisi pada usulan yang sama</button></form></details>';
+                }
                 if(in_array($role,['petugas','admin_desa'],true) && in_array($r['status'],['submitted','in_review','revision_requested'],true)) {
                     echo '<form method="post" class="status-form">'.csrf_field().'<input type="hidden" name="action" value="module_review_change"><input type="hidden" name="change_id" value="'.(int)$r['id'].'"><select name="decision"><option value="revision_requested">Minta revisi</option>';
                     if($role==='admin_desa') echo '<option value="approve">Setujui</option><option value="reject">Tolak</option>';
