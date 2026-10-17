@@ -11,7 +11,21 @@ $_SERVER['SCRIPT_NAME'] = '/index.php';
 $_SERVER['REQUEST_URI'] = '/index.php';
 $_SERVER['HTTP_USER_AGENT'] = 'DESA-DIGITAL-CI-dashboard-smoke';
 
-require_once dirname(__DIR__) . '/app/bootstrap.php';
+session_name('desa_digital_session');
+session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>false,'httponly'=>true,'samesite'=>'Lax']);
+if (session_status() !== PHP_SESSION_ACTIVE) session_start();
+
+$host = getenv('DB_HOST') ?: '127.0.0.1';
+$port = getenv('DB_PORT') ?: '3306';
+$name = getenv('DB_NAME') ?: 'desa_digital';
+$dbUser = getenv('DB_USER') ?: 'ci_app';
+$dbPass = getenv('DB_PASSWORD') ?: 'ci-app-pass';
+$pdo = new PDO("mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4", $dbUser, $dbPass, [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES => false,
+]);
+
 $role = (string)($argv[1] ?? '');
 $page = (string)($argv[2] ?? 'dashboard');
 $allowed = [
@@ -23,7 +37,6 @@ if (!isset($allowed[$role]) || !in_array($page, $allowed[$role], true)) {
     exit(2);
 }
 
-$pdo = db();
 $tag = bin2hex(random_bytes(6));
 $username = 'ci-' . $role . '-' . $tag;
 $userId = 0;
