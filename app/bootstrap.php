@@ -30,6 +30,58 @@ function app_url(string $page = 'home', array $params = []): string {
     return '?' . http_build_query($query);
 }
 
+/**
+ * Protect national identifiers at rest. APP_KEY must be a long random secret
+ * and must be backed up securely; losing it makes encrypted identifiers unrecoverable.
+ */
+function private_identifier_key(string $purpose): string {
+    $configured = trim(env_value('APP_KEY', ''));
+    if (strlen($configured) < 32 || preg_match('/replace|placeholder|example|change-me|dev-only/i', $configured)) {
+        throw new RuntimeException('APP_KEY belum diisi dengan rahasia acak minimal 32 karakter.');
+    }
+    return hash_hmac('sha256', 'DESA-DIGITAL:' . $purpose, $configured, true);
+}
+
+function normalize_private_identifier(string $value): string {
+    $digits = preg_replace('/\\D+/', '', $value) ?? '';
+    if (!preg_match('/^[0-9]{16}$/', $digits)) {
+        throw new RuntimeException('NIK dan nomor KK harus terdiri dari 16 digit angka.');
+    }
+    return $digits;
+}
+
+function private_identifier_hash(string $value): string {
+    $digits = normalize_private_identifier($value);
+    return hash_hmac('sha256', $digits, private_identifier_key('identifier-index'));
+}
+
+function encrypt_private_identifier(string $value): string {
+    if (!function_exists('sodium_crypto_secretbox')) {
+        throw new RuntimeException('Ekstensi sodium dibutuhkan untuk melindungi NIK dan nomor KK.');
+    }
+    $digits = normalize_private_identifier($value);
+    $nonce = random_bytes(SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+    $ciphertext = sodium_crypto_secretbox($digits, $nonce, private_identifier_key('identifier-encryption'));
+    return base64_encode($nonce . $ciphertext);
+}
+
+function decrypt_private_identifier(string $value): ?string {
+    if (!function_exists('sodium_crypto_secretbox_open')) {
+        throw new RuntimeException('Ekstensi sodium dibutuhkan untuk membaca NIK dan nomor KK.');
+    }
+    $raw = base64_decode($value, true);
+    if ($raw === false || strlen($raw) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) return null;
+    $nonce = substr($raw, 0, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+    $ciphertext = substr($raw, SODIUM_CRYPTO_SECRETBOX_NONCEBYTES);
+    $plain = sodium_crypto_secretbox_open($ciphertext, $nonce, private_identifier_key('identifier-encryption'));
+    return is_string($plain) && preg_match('/^[0-9]{16}$/', $plain) ? $plain : null;
+}
+
+function mask_private_identifier(string $value): string {
+    $digits = normalize_private_identifier($value);
+    return str_repeat('*', 12) . substr($digits, -4);
+}
+
 function e(?string $value): string {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
