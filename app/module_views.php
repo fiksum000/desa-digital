@@ -550,7 +550,7 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
           'benefit_transparent'=>'Transparan dan terpercaya','benefit_all'=>'Untuk seluruh warga','service_card_service_title'=>'Layanan Surat','service_card_service_text'=>'Ajukan berbagai surat keterangan dengan mudah dan cepat.',
           'service_card_complaint_title'=>'Pengaduan Warga','service_card_complaint_text'=>'Sampaikan aspirasi, keluhan, atau laporan Anda.','service_card_info_title'=>'Informasi Desa',
           'service_card_info_text'=>'Akses informasi seputar program, kegiatan, dan data desa.','home_tracking_title'=>'Cek Status Pengajuan','home_tracking_subtitle'=>'Masukkan nomor pengajuan Anda',
-          'tracking_placeholder'=>'Contoh: SR-260101-AB12CD34','home_news_title'=>'Berita & Pengumuman','home_news_subtitle'=>'Informasi terbaru seputar kegiatan, program, dan perkembangan desa.',
+          'tracking_placeholder'=>'Contoh: SR-261017-0123456789ABCDEF0123456789ABCDEF','home_news_title'=>'Berita & Pengumuman','home_news_subtitle'=>'Informasi terbaru seputar kegiatan, program, dan perkembangan desa.',
           'news_see_all'=>'Lihat Semua','home_no_news_title'=>'Berita desa akan tampil di sini.','home_no_news_text'=>'Petugas dapat menerbitkan berita dan pengumuman melalui panel pengelolaan.',
           'stat_residents_label'=>'Jumlah Penduduk','stat_families_label'=>'Jumlah KK','stat_area_label'=>'Luas Wilayah','stat_dusun_label'=>'Dusun','stats_aria_label'=>'Ringkasan data desa',
           'nav_home'=>'Beranda','nav_services'=>'Layanan Desa','nav_news'=>'Berita & Pengumuman','nav_complaints'=>'Pengaduan','nav_profile'=>'Profil Desa','nav_more'=>'Lainnya',
