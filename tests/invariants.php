@@ -248,7 +248,7 @@ check_true(!preg_match('/ports:\s*\n\s*-\s*["\']?3306:/m', $compose), 'Database 
 
 $exportSource = load_text('app/modules.php');
 check_true(str_contains($exportSource, "if(\$role==='rt') { \$whereParts[]='rt.id=?';") && str_contains($exportSource, "elseif(\$role==='rw') { \$whereParts[]='rt.rw_id=?';"), 'Resident/family exports must constrain rows to the logged-in RT/RW scope.');
-check_true(str_contains($exportSource, "module_audit_actor(\$user,'export','report_\$kind'"), 'Sensitive report exports must create an audit record.');
+check_true(str_contains($exportSource, "module_audit_actor(\$user,'export','report_'.\$kind"), 'Sensitive report exports must create an audit record.');
 check_true(str_contains($exportSource, "header('Cache-Control: private, no-store, max-age=0')"), 'Private downloads and report exports must disable shared caching.');
 check_true(module_csv_safe('=1+1') === "'=1+1", 'CSV export must neutralize formula cells starting with equals.');
 check_true(module_csv_safe("  +SUM(A1:A2)") === "'  +SUM(A1:A2)", 'CSV export must neutralize formula cells after leading spaces.');
