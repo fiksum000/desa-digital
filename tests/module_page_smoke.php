@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 // Render selected authenticated module pages against the real CI MariaDB schema.
 // The fixture is synthetic, uniquely named, and cleaned up in a finally block.
-putenv('APP_KEY', getenv('APP_KEY') ?: str_repeat('c', 64));
+if (!getenv('APP_KEY')) putenv('APP_KEY=' . str_repeat('c', 64));
 $_SERVER['HTTP_HOST'] = 'localhost';
 $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
 $_SERVER['REQUEST_METHOD'] = 'GET';
@@ -112,9 +112,7 @@ try {
     fwrite(STDOUT, "PASS: authenticated {$page} page smoke test.\n");
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    fwrite(STDERR, "FAIL: {$page} page smoke test: " . $e->getMessage() . "\n");
-    exitCode:
-    exit(1);
+    $errorMessage = $e->getMessage();
 } finally {
     // Best-effort fixture cleanup; all values are synthetic.
     if (!$pdo->inTransaction()) {
@@ -135,4 +133,8 @@ try {
     }
     $_SESSION = [];
     if (session_status() === PHP_SESSION_ACTIVE) session_destroy();
+}
+if (isset($errorMessage)) {
+    fwrite(STDERR, "FAIL: {$page} page smoke test: " . $errorMessage . "\n");
+    exit(1);
 }
