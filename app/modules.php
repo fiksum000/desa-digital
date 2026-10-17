@@ -1286,7 +1286,7 @@ function module_service_letter_text_escape(string $text): string {
     $converted = function_exists('iconv') ? @iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text) : false;
     if ($converted !== false) $text = $converted;
     $text = preg_replace('/[^\\x20-\\x7E\\x80-\\xFF]/', '?', $text) ?? '';
-    return str_replace(['\\\\', '(', ')'], ['\\\\\\\\', '\\\\(', '\\\\)'], $text);
+    return str_replace(['\\', '(', ')'], ['\\\\', '\(', '\)'], $text);
 }
 
 function module_build_service_letter_pdf(array $request, array $site): string {
@@ -1299,7 +1299,7 @@ function module_build_service_letter_pdf(array $request, array $site): string {
         $y = 790;
     };
     $finishPage = function () use (&$pages, &$commands): void {
-        if ($commands) $pages[] = implode("\\n", $commands);
+        if ($commands) $pages[] = implode("\n", $commands);
     };
     $writeLine = function (string $text, float $size = 10.5, bool $bold = false, string $align = 'left', float $gap = 16) use (&$commands, &$y, &$startPage, &$finishPage): void {
         if ($y < 80) {
@@ -1325,7 +1325,7 @@ function module_build_service_letter_pdf(array $request, array $site): string {
     $writeParagraph = function (string $text, float $size = 10.5, float $gap = 15) use (&$writeLine): void {
         $text = trim($text);
         if ($text === '') return;
-        foreach (explode("\\n", wordwrap($text, 84, "\\n", true)) as $line) {
+        foreach (explode("\n", wordwrap($text, 84, "\n", true)) as $line) {
             $writeLine($line, $size, false, 'left', $gap);
         }
     };
@@ -1397,27 +1397,27 @@ function module_build_service_letter_pdf(array $request, array $site): string {
         $kids[] = $pageObject . ' 0 R';
         $objects[$pageObject] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ' . $streamObject . ' 0 R >>';
         $stream = $pages[$i];
-        $objects[$streamObject] = '<< /Length ' . strlen($stream) . " >>\\nstream\\n" . $stream . "\\nendstream";
+        $objects[$streamObject] = '<< /Length ' . strlen($stream) . " >>\nstream\n" . $stream . "\nendstream";
     }
     $objects[2] = '<< /Type /Pages /Kids [' . implode(' ', $kids) . '] /Count ' . $pageCount . ' >>';
     $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
     $objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
     ksort($objects);
 
-    $pdf = "%PDF-1.4\\n";
+    $pdf = "%PDF-1.4\n";
     $offsets = [0];
     $maxId = max(array_keys($objects));
     for ($id = 1; $id <= $maxId; $id++) {
         $offsets[$id] = strlen($pdf);
-        $pdf .= $id . " 0 obj\\n" . $objects[$id] . "\\nendobj\\n";
+        $pdf .= $id . " 0 obj\n" . $objects[$id] . "\nendobj\n";
     }
     $xrefOffset = strlen($pdf);
-    $pdf .= "xref\\n0 " . ($maxId + 1) . "\\n";
-    $pdf .= "0000000000 65535 f \\n";
+    $pdf .= "xref\n0 " . ($maxId + 1) . "\n";
+    $pdf .= "0000000000 65535 f \n";
     for ($id = 1; $id <= $maxId; $id++) {
-        $pdf .= sprintf("%010d 00000 n \\n", $offsets[$id]);
+        $pdf .= sprintf("%010d 00000 n \n", $offsets[$id]);
     }
-    $pdf .= "trailer\\n<< /Size " . ($maxId + 1) . " /Root 1 0 R >>\\nstartxref\\n" . $xrefOffset . "\\n%%EOF\\n";
+    $pdf .= "trailer\n<< /Size " . ($maxId + 1) . " /Root 1 0 R >>\nstartxref\n" . $xrefOffset . "\n%%EOF\n";
     return $pdf;
 }
 
