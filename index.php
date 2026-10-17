@@ -310,6 +310,7 @@ $title = $pageTitles[$page] ?? 'DESA DIGITAL';
   </nav>
   <div class="header-actions">
     <a class="icon-button search-link" href="<?= e(app_url('berita')) ?>" aria-label="Cari berita">⌕</a>
+    <button class="icon-button mobile-menu-toggle" type="button" aria-label="Buka menu tambahan" aria-expanded="false" aria-controls="mobile-drawer">☰</button>
     <?php if ($viewer): ?>
       <a class="login-button" href="<?= e(app_url('dashboard')) ?>">♙ <span><?= e($viewer['full_name']) ?></span></a>
     <?php else: ?>
