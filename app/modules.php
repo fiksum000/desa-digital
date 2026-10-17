@@ -23,7 +23,7 @@ function module_is_allowed_rt(array $user, int $rtId): bool {
         $stmt->execute([$rtId, (int)($user['rw_id'] ?? 0)]);
         return (bool)$stmt->fetchColumn();
     }
-    if (in_array($role, ['petugas','admin_desa','kepala_desa'], true)) {
+    if (in_array($role, ['petugas','admin_desa','owner','kepala_desa'], true)) {
         $stmt=db()->prepare('SELECT rt.id FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id WHERE rt.id=? AND rt.is_active=1 AND rw.is_active=1 LIMIT 1');
         $stmt->execute([$rtId]);
         return (bool)$stmt->fetchColumn();
@@ -234,7 +234,7 @@ function module_audit_actor(array $user, string $action, string $entity, int|str
 }
 
 function module_create_rt_account(array $user): never {
-    if (($user['role'] ?? '') !== 'admin_desa') throw new RuntimeException('Hanya Admin Desa yang boleh membuat akun RT.');
+    if (!in_array(($user['role'] ?? ''), ['admin_desa','owner'], true)) throw new RuntimeException('Hanya Admin Desa atau Owner yang boleh membuat akun RT.');
     $rwId = filter_input(INPUT_POST, 'rw_id', FILTER_VALIDATE_INT);
     $rtCode = trim((string)($_POST['rt_code'] ?? ''));
     $username = strtolower(trim((string)($_POST['username'] ?? '')));
@@ -319,7 +319,7 @@ function module_handle_post(): void {
                 redirect_to($returnPage);
             }
             case 'module_create_dusun': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $name = trim((string)($_POST['name'] ?? ''));
                 $code = strtoupper(trim((string)($_POST['code'] ?? '')));
                 if (mb_strlen($name)<2 || mb_strlen($name)>100 || !preg_match('/^[A-Z0-9-]{2,20}$/',$code)) throw new RuntimeException('Nama dusun atau kode tidak valid.');
@@ -329,7 +329,7 @@ function module_handle_post(): void {
                 flash('Dusun berhasil ditambahkan.'); redirect_to('admin-wilayah');
             }
             case 'module_create_rw': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $dusunId = filter_input(INPUT_POST,'dusun_id',FILTER_VALIDATE_INT);
                 $code = trim((string)($_POST['number_code'] ?? ''));
                 if (!$dusunId || !preg_match('/^[A-Za-z0-9-]{1,10}$/',$code)) throw new RuntimeException('Pilih dusun dan isi nomor RW.');
@@ -339,9 +339,9 @@ function module_handle_post(): void {
                 flash('RW berhasil ditambahkan.'); redirect_to('admin-wilayah');
             }
             case 'module_create_rt_account':
-                module_create_rt_account(module_require_role(['admin_desa']));
+                module_create_rt_account(module_require_role(['admin_desa','owner']));
             case 'module_update_rt_user': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'user_id',FILTER_VALIDATE_INT);
                 $operation=(string)($_POST['operation'] ?? '');
                 $stmt=$pdo->prepare("SELECT id,username,full_name,role,rt_id,rw_id,is_active,session_version FROM app_users WHERE id=? AND role IN ('rt','rw','petugas','kepala_desa') LIMIT 1");
@@ -370,7 +370,7 @@ function module_handle_post(): void {
                 redirect_to('admin-users');
             }
             case 'module_create_staff_account': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $role=(string)($_POST['staff_role'] ?? '');
                 $username=strtolower(trim((string)($_POST['username'] ?? '')));
                 $name=trim((string)($_POST['full_name'] ?? ''));
@@ -388,7 +388,7 @@ function module_handle_post(): void {
                 redirect_to('admin-users');
             }
             case 'module_reassign_rt_account': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'user_id',FILTER_VALIDATE_INT);
                 $rtId=filter_input(INPUT_POST,'rt_id',FILTER_VALIDATE_INT);
                 if(!$id || !$rtId) throw new RuntimeException('Pilih akun dan wilayah RT yang valid.');
@@ -408,7 +408,7 @@ function module_handle_post(): void {
                 redirect_to('admin-users');
             }
             case 'module_create_rw_account': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $rwId=filter_input(INPUT_POST,'rw_id',FILTER_VALIDATE_INT);
                 $username=strtolower(trim((string)($_POST['username'] ?? '')));
                 $name=trim((string)($_POST['full_name'] ?? ''));
@@ -422,7 +422,7 @@ function module_handle_post(): void {
                 flash('Akun RW berhasil dibuat.'); redirect_to('admin-users');
             }
             case 'module_import_residents': {
-                $user = module_require_role(['rt','admin_desa']);
+                $user = module_require_role(['rt','admin_desa','owner']);
                 $rtId = ($user['role']==='rt') ? (int)($user['rt_id'] ?? 0) : (int)(filter_input(INPUT_POST,'rt_id',FILTER_VALIDATE_INT) ?: 0);
                 if(!module_is_allowed_rt($user,$rtId)) throw new RuntimeException('Pilih wilayah RT yang valid.');
                 $file=$_FILES['import_csv'] ?? [];
@@ -503,7 +503,7 @@ function module_handle_post(): void {
                 redirect_to('rt-data');
             }
             case 'module_save_resident_family': {
-                $user = module_require_role(['rt','admin_desa']);
+                $user = module_require_role(['rt','admin_desa','owner']);
                 $rtId = ($user['role']==='rt') ? (int)($user['rt_id'] ?? 0) : (int)(filter_input(INPUT_POST,'rt_id',FILTER_VALIDATE_INT) ?: 0);
                 if (!module_is_allowed_rt($user,$rtId)) throw new RuntimeException('Wilayah RT tidak valid atau bukan wilayah tugas akun.');
                 $familyNo=trim((string)($_POST['family_number'] ?? ''));
@@ -547,7 +547,7 @@ function module_handle_post(): void {
                 redirect_to('rt-data');
             }
             case 'module_add_resident': {
-                $user = module_require_role(['rt','admin_desa']);
+                $user = module_require_role(['rt','admin_desa','owner']);
                 $familyId=filter_input(INPUT_POST,'family_id',FILTER_VALIDATE_INT);
                 $stmt=$pdo->prepare('SELECT id,rt_id,status FROM family_records WHERE id=? LIMIT 1'); $stmt->execute([$familyId]); $family=$stmt->fetch();
                 if (!$family || !module_is_allowed_rt($user,(int)$family['rt_id'])) throw new RuntimeException('Keluarga tidak ditemukan atau di luar wilayah tugas.');
@@ -570,7 +570,7 @@ function module_handle_post(): void {
                 flash('Anggota keluarga ditambahkan sebagai menunggu pemeriksaan.'); redirect_to('rt-data');
             }
             case 'module_review_resident': {
-                $user = module_require_role(['petugas','admin_desa']);
+                $user = module_require_role(['petugas','admin_desa','owner']);
                 $kind=(string)($_POST['kind'] ?? 'resident');
                 $id=filter_input(INPUT_POST,'record_id',FILTER_VALIDATE_INT);
                 $decision=(string)($_POST['decision'] ?? '');
@@ -707,13 +707,13 @@ function module_handle_post(): void {
                 redirect_to('perubahan');
             }
             case 'module_review_change': {
-                $user = module_require_role(['petugas','admin_desa']);
+                $user = module_require_role(['petugas','admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'change_id',FILTER_VALIDATE_INT);
                 $decision=(string)($_POST['decision'] ?? '');
                 $note=trim((string)($_POST['review_note'] ?? ''));
                 if (!$id || !in_array($decision,['approve','revision_requested','reject'],true)) throw new RuntimeException('Keputusan tidak valid.');
-                if ($decision==='approve' && ($user['role'] ?? '')!=='admin_desa') throw new RuntimeException('Persetujuan akhir usulan perubahan hanya oleh Admin Desa.');
-                if ($decision==='reject' && ($user['role'] ?? '')!=='admin_desa') throw new RuntimeException('Penolakan akhir usulan hanya oleh Admin Desa.');
+                if ($decision==='approve' && !in_array(($user['role'] ?? ''), ['admin_desa','owner'], true)) throw new RuntimeException('Persetujuan akhir usulan perubahan hanya oleh Admin Desa.');
+                if ($decision==='reject' && !in_array(($user['role'] ?? ''), ['admin_desa','owner'], true)) throw new RuntimeException('Penolakan akhir usulan hanya oleh Admin Desa.');
                 if ($decision!=='approve' && mb_strlen($note)<4) throw new RuntimeException('Isi alasan untuk meminta revisi atau menolak.');
 
                 $pdo->beginTransaction();
@@ -830,7 +830,7 @@ function module_handle_post(): void {
                 redirect_to('perubahan');
             }
             case 'module_upload_document': {
-                $user = module_require_role(['rt','petugas','admin_desa']);
+                $user = module_require_role(['rt','petugas','admin_desa','owner']);
                 $residentId=filter_input(INPUT_POST,'resident_id',FILTER_VALIDATE_INT);
                 $resident=module_resident_scope($user,(int)$residentId);
                 $type=(string)($_POST['document_type'] ?? '');
@@ -849,7 +849,7 @@ function module_handle_post(): void {
                 redirect_to('dokumen');
             }
             case 'module_review_document': {
-                $user = module_require_role(['petugas','admin_desa']);
+                $user = module_require_role(['petugas','admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'document_id',FILTER_VALIDATE_INT);
                 $status=(string)($_POST['status'] ?? '');
                 $note=trim((string)($_POST['review_note'] ?? ''));
@@ -879,7 +879,7 @@ function module_handle_post(): void {
                 flash('Status dokumen diperbarui.'); redirect_to('dokumen');
             }
             case 'module_publish_site_revision': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'revision_id',FILTER_VALIDATE_INT);
                 if(!$id) throw new RuntimeException('Draf konten tidak valid.');
                 $stmt=$pdo->prepare("SELECT id,content_key,content_value,status FROM site_content_revisions WHERE id=? AND status='draft' LIMIT 1");
@@ -906,7 +906,7 @@ function module_handle_post(): void {
                 redirect_to('admin-site');
             }
             case 'module_restore_site_version': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'version_id',FILTER_VALIDATE_INT);
                 if(!$id) throw new RuntimeException('Versi konten tidak valid.');
                 $stmt=$pdo->prepare('SELECT v.id,v.content_id,v.content_value,sc.content_key,sc.value_type FROM site_content_versions v JOIN site_content sc ON sc.id=v.content_id WHERE v.id=? LIMIT 1');
@@ -928,7 +928,7 @@ function module_handle_post(): void {
                 redirect_to('admin-site');
             }
             case 'module_save_site': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $fields=[
                     'village_name'=>['label'=>'Nama desa','max'=>160],
                     'village_subdistrict'=>['label'=>'Kecamatan','max'=>120],
@@ -998,7 +998,7 @@ function module_handle_post(): void {
                 redirect_to('admin-site');
             }
             case 'module_save_service': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $name=trim((string)($_POST['name'] ?? ''));
                 $slug=trim((string)($_POST['slug'] ?? ''));
                 $description=trim((string)($_POST['description'] ?? ''));
@@ -1024,7 +1024,7 @@ function module_handle_post(): void {
                 flash('Jenis layanan disimpan.'); redirect_to('admin-services');
             }
             case 'module_save_directory': {
-                $user = module_require_role(['petugas','admin_desa']);
+                $user = module_require_role(['petugas','admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'item_id',FILTER_VALIDATE_INT);
                 $kind=(string)($_POST['kind'] ?? 'umkm');
                 $title=trim((string)($_POST['title'] ?? ''));
@@ -1053,7 +1053,7 @@ function module_handle_post(): void {
                 redirect_to($kind==='wisata'?'admin-directory':'admin-directory');
             }
             case 'module_save_budget': {
-                $user = module_require_role(['admin_desa']);
+                $user = module_require_role(['admin_desa','owner']);
                 $id=filter_input(INPUT_POST,'report_id',FILTER_VALIDATE_INT);
                 $year=filter_input(INPUT_POST,'fiscal_year',FILTER_VALIDATE_INT);
                 $title=trim((string)($_POST['title'] ?? ''));
@@ -1163,7 +1163,7 @@ function module_serve_export(): void {
             $headers=['ID internal keluarga','Dusun','RW','RT','Status','Jumlah anggota','Tanggal input'];
         }
     } elseif(in_array($kind,['requests','complaints'],true)) {
-        if(!in_array($role,['petugas','admin_desa','kepala_desa'],true)) { http_response_code(403); exit('Ekspor surat/pengaduan hanya untuk petugas berwenang.'); }
+        if(!in_array($role,['petugas','admin_desa','owner','kepala_desa'],true)) { http_response_code(403); exit('Ekspor surat/pengaduan hanya untuk petugas berwenang.'); }
         $whereParts=[];$params=[];
         if($dateFrom) {$whereParts[]='created_at >= ?';$params[]=$dateFrom.' 00:00:00';}
         if($dateTo) {$whereParts[]='created_at < DATE_ADD(?, INTERVAL 1 DAY)';$params[]=$dateTo.' 00:00:00';}
@@ -1221,7 +1221,7 @@ function module_serve_private_document(): void {
         $stmt=db()->prepare('SELECT d.*,r.rt_id AS resident_rt_id FROM resident_documents d LEFT JOIN residents r ON r.id=d.resident_id WHERE d.id=? LIMIT 1');
         $stmt->execute([$id]);$doc=$stmt->fetch();
         if(!$doc || !module_is_allowed_rt($user,(int)$doc['rt_id'])) { http_response_code(404); exit('Dokumen tidak ditemukan.'); }
-        if(!in_array(($user['role'] ?? ''),['rt','petugas','admin_desa'],true)) { http_response_code(403); exit('Akses dokumen ditolak.'); }
+        if(!in_array(($user['role'] ?? ''),['rt','petugas','admin_desa','owner'],true)) { http_response_code(403); exit('Akses dokumen ditolak.'); }
         if(($user['role'] ?? '')==='rt' && (int)$doc['uploaded_by']!==(int)$user['id'] && (int)($user['rt_id'] ?? 0)!==(int)$doc['rt_id']) { http_response_code(403); exit('Akses dokumen ditolak.'); }
         $key=(string)$doc['storage_key'];
         if(!preg_match('/^[a-f0-9]{48}\.(jpg|png|webp|pdf)$/',$key)) { http_response_code(404); exit('Dokumen tidak ditemukan.'); }
@@ -1279,7 +1279,7 @@ function module_can_access_service_file(array $user, array $file): bool {
         $assignedTo = (int)($file['assigned_to'] ?? 0);
         return $assignedTo === 0 || $assignedTo === (int)($user['id'] ?? 0);
     }
-    return in_array($role, ['admin_desa','kepala_desa'], true);
+    return in_array($role, ['admin_desa','owner','kepala_desa'], true);
 }
 
 function module_serve_private_service_file(): void {
@@ -1479,7 +1479,7 @@ function module_can_access_service_letter(array $user, array $request): bool {
         return (int)($user['id'] ?? 0) > 0
             && (int)($request['applicant_id'] ?? 0) === (int)$user['id'];
     }
-    return in_array($role, ['petugas', 'admin_desa', 'kepala_desa'], true);
+    return in_array($role, ['petugas', 'admin_desa', 'owner', 'kepala_desa'], true);
 }
 
 function module_serve_service_letter_pdf(): void {
@@ -1539,7 +1539,7 @@ function module_serve_service_letter_pdf(): void {
 function module_serve_admin_resident_bundle(): void {
     if ((string)($_GET['page'] ?? '') !== 'admin-resident-export') return;
     $user = require_login();
-    if ((string)($user['role'] ?? '') !== 'admin_desa') {
+    if (!in_array((string)($user['role'] ?? ''), ['admin_desa','owner'], true)) {
         http_response_code(403);
         exit('Ekspor lengkap hanya tersedia untuk Admin Desa.');
     }
