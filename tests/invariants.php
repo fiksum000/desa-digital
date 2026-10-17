@@ -251,7 +251,7 @@ $bundleView = load_text('app/module_views.php');
 $indexSource = load_text('index.php');
 check_true(str_contains($bundleSource, "if ((string)(\$_GET['page'] ?? '') !== 'admin-resident-export') return;"), 'Admin resident bundle endpoint must be explicitly routed.');
 check_true(str_contains($bundleSource, "(\$user['role'] ?? '') !== 'admin_desa'"), 'Full resident data bundle must be restricted to Admin Desa.');
-check_true(str_contains($bundleSource, "decrypt_private_identifier((string)\\$row['nik_cipher'])") && str_contains($bundleSource, "decrypt_private_identifier((string)$row['family_number_cipher'])"), 'Full NIK and KK must be decrypted through the application privacy helper.');
+check_true(str_contains($bundleSource, "decrypt_private_identifier((string)\$row['nik_cipher'])") && str_contains($bundleSource, "decrypt_private_identifier((string)\$row['family_number_cipher'])"), 'Full NIK and KK must be decrypted through the application privacy helper.');
 check_true(str_contains($bundleSource, "status='approved' AND document_type IN ('ktp','kk')"), 'ZIP bundles must include only approved KTP/KK documents.');
 check_true(str_contains($bundleSource, "module_audit_actor(\$user, 'export', 'resident_private_bundle'"), 'Private resident bundle exports must be audit logged.');
 check_true(str_contains($bundleSource, "header('Cache-Control: private, no-store, max-age=0')"), 'Private resident bundles must disable caching.');
