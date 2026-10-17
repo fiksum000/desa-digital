@@ -13,6 +13,16 @@ $pdo = db();
 private_identifier_key('identifier-encryption');
 private_identifier_key('identifier-index');
 
+$pdo->exec("CREATE TABLE IF NOT EXISTS auth_attempts (
+    bucket_hash CHAR(64) NOT NULL PRIMARY KEY,
+    bucket_type ENUM('account','ip') NOT NULL,
+    attempts SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+    window_started_at DATETIME NOT NULL,
+    locked_until DATETIME NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_auth_attempt_lock (locked_until, window_started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
 function migration_column_exists(PDO $pdo, string $table, string $column): bool {
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?');
     $stmt->execute([$table, $column]);
