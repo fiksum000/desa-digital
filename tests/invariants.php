@@ -15,7 +15,7 @@ function load_text(string $relative): string {
 }
 foreach ([
     'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css',
-    'assets/app.js', 'assets/village-hero.svg', 'Dockerfile', 'bin/migrate_private_identifiers.php',
+    'assets/app.js', 'assets/village-hero.svg', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
     check_true(is_file($root . '/' . $relative), "Missing required file: {$relative}");
