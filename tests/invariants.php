@@ -135,7 +135,7 @@ foreach ([
 
 $index = load_text('index.php');
 foreach ([
-    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', "site_val('hero_image','assets/village-hero.webp')", 'user_notifications WHERE user_id=? ORDER BY',
+    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', "site_image_val('hero_image','assets/village-hero.webp')", 'user_notifications WHERE user_id=? ORDER BY',
     'verify_csrf()', 'revision_requested',
     'SELECT tracking_code', "app_url('layanan',["
 ] as $needle) {
@@ -307,7 +307,7 @@ check_true(str_contains($publicHandler,'module_site_image_value_allowed') && str
 check_true(str_contains(load_text('app/bootstrap.php'),"Content-Security-Policy: default-src 'self'") && str_contains(load_text('app/bootstrap.php'),"frame-ancestors 'none'"), 'Public responses must include a restrictive content security policy.');
 check_true(str_contains($publicIndex,'function public_image_src') && str_contains($publicIndex,'public_image_src($article'), 'Public article/news image URLs must be restricted to allowed local files.');
 check_true(str_contains($publicViews,"'admin-site' => ['admin_desa','owner']"), 'Public site CMS must be restricted to Admin Desa and Owner.');
-check_true(str_contains($publicIndex,"site_val('logo_image'") && str_contains($publicIndex,"site_val('login_image'") && str_contains($publicIndex,"site_val('register_image'"), 'Brand and auth images must use CMS-managed values.');
+check_true(str_contains($publicIndex,"site_image_val('logo_image'") && str_contains($publicIndex,"site_image_val('login_image'") && str_contains($publicIndex,"site_image_val('register_image'"), 'Brand and auth images must use CMS-managed values.');
 check_true(str_contains($publicIndex,"site_val('home_news_title'") && str_contains($publicIndex,"site_val('nav_home'") && str_contains($publicIndex,"site_val('footer_summary'"), 'Navigation, home sections, and footer copy must use managed values.');
 check_true(str_contains($publicCss,'object-fit:cover') && str_contains($publicCss,'.news-image img') && str_contains($publicCss,'.auth-intro>img'), 'Public images must auto-fit responsive frames.');
 check_true(str_contains($publicIndex,"SELECT content_key,content_value FROM site_content WHERE status='published'") && str_contains($publicIndex,'$siteContent[(string)$siteRow[\'content_key\']]'), 'Public renderer must load only published CMS values, never drafts.');
