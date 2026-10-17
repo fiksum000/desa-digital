@@ -12,6 +12,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         'httponly' => true,
         'samesite' => 'Lax',
     ]);
+    if ($secureCookie) {
+        // Emit HSTS only when HTTPS is detected or explicitly enabled for the proxy.
+        header('Strict-Transport-Security: max-age=15552000');
+    }
     session_start();
 }
 
@@ -19,6 +23,9 @@ header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+// App HTML may contain session tokens, tracking results, and authenticated pages.
+header('Cache-Control: private, no-store, max-age=0');
+header('Pragma: no-cache');
 header("Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self'");
 
 function env_value(string $name, string $default = ''): string {
@@ -286,5 +293,7 @@ function role_label(string $role): string {
 }
 
 function tracking_code(string $prefix): string {
-    return strtoupper($prefix . '-' . date('ymd') . '-' . substr(bin2hex(random_bytes(5)), 0, 8));
+    // 128-bit random suffix makes public tracking tokens impractical to enumerate.
+    // Existing installations widen their columns with bin/migrate_tracking_codes.php.
+    return strtoupper($prefix . '-' . date('ymd') . '-' . bin2hex(random_bytes(16)));
 }
