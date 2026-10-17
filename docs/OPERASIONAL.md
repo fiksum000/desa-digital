@@ -16,7 +16,7 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 1. Salin `.env.example` menjadi `.env`.
 2. Buat nilai acak yang kuat untuk `APP_KEY`, `DB_PASSWORD`, dan `DB_ROOT_PASSWORD`. Untuk APP_KEY, jalankan `openssl rand -hex 32` lalu salin hasil 64 karakter heksadesimal ke `.env`. Buat kedua sandi database secara terpisah; jangan gunakan contoh atau sandi yang sama.
 3. **Jangan kehilangan atau mengganti APP_KEY setelah data warga masuk.** Kunci ini dipakai untuk mengenkripsi NIK/KK dan membuat HMAC pencarian duplikasi. Simpan cadangan kunci secara terenkripsi dan terpisah dari backup database.
-4. Untuk akses melalui HTTPS, atur `SESSION_SECURE_COOKIE=true` setelah TLS diaktifkan di reverse proxy.
+4. Untuk akses melalui HTTPS, atur `SESSION_SECURE_COOKIE=true` setelah TLS diaktifkan di reverse proxy. Ini mengaktifkan cookie Secure dan header HSTS; jangan aktifkan sebelum HTTPS publik bekerja.
 5. Jalankan `docker compose up -d --build`.
 6. Periksa `docker compose ps` dan `docker compose logs --tail=100 web db`.
 7. Buat akun admin awal melalui terminal trusted container menggunakan `php bin/create_admin.php <username> \"<Nama Admin>\" '<sandi-panjang>'`. Hindari menuliskan sandi asli di riwayat shell; gunakan mekanisme secret management yang sesuai pada server.
@@ -88,6 +88,16 @@ Jika database lama sudah dibuat dari skema yang menyimpan NIK/KK sebagai teks bi
 Pada database yang sudah ada, jalankan migrasi yang aman diulang dari container web setelah mengambil backup:
 `docker compose exec web php bin/migrate_service_letters.php`
 
+## Penguatan kode pelacakan publik
+
+Kode baru untuk pengajuan dan pengaduan menggunakan token acak 128-bit. Kode lama tetap berlaku; kolom database diperlebar dari 32 menjadi 48 karakter. Pada database yang sudah ada, ambil backup terlebih dahulu lalu jalankan migrasi idempotent dari container web:
+
+```bash
+docker compose exec web php bin/migrate_tracking_codes.php
+```
+
+Respons aplikasi menggunakan `Cache-Control: private, no-store` agar halaman pelacakan, formulir, dan data sesi tidak tersimpan di cache browser/proxy. Pastikan HTTPS aktif untuk penggunaan publik dan atur `SESSION_SECURE_COOKIE=true` di reverse proxy.
+
 ## Pembaruan dari GitHub
 
-Setelah versi diuji dan disetujui: masuk ke direktori proyek, periksa branch dan perubahan lokal, jalankan backup, lalu gunakan `git pull --ff-only origin main`. Setelah itu rebuild image dan smoke-test semua alur sebelum membuka lagi ke warga. Jangan melakukan pull langsung ke produksi tanpa backup.
+Setelah versi diuji dan disetujui: masuk ke direktori proyek, periksa branch dan perubahan lokal, jalankan backup, lalu gunakan `git pull --ff-only origin main`. Setelah itu rebuild image dan smoke-test semua alur sebelum membuka lagi ke warga. Jalankan migrasi baru dari container web jika bagian rilis menyebutkannya; jangan melakukan pull langsung ke produksi tanpa backup.
