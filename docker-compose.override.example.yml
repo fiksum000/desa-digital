@@ -1,0 +1,7 @@
+# Optional example for local development only. Copy to docker-compose.override.yml
+# Do not commit your real environment values.
+services:
+  web:
+    environment:
+      APP_ENV: development
+      APP_DEBUG: "true"
