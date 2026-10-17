@@ -1555,6 +1555,9 @@ function module_serve_service_letter_pdf(): void {
  */
 function module_serve_admin_resident_bundle(): void {
     if ((string)($_GET['page'] ?? '') !== 'admin-resident-export') return;
+    // Let the initial GET render the filter form; only requests carrying export
+    // parameters enter the file-download handler.
+    if (!array_key_exists('bundle', $_GET) && !array_key_exists('reason', $_GET)) return;
     $user = require_login();
     if (!in_array((string)($user['role'] ?? ''), ['admin_desa','owner'], true)) {
         http_response_code(403);
