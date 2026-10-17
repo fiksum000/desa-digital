@@ -723,7 +723,7 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
       <a class="dashboard-action" href="<?= e(app_url('rt-data')) ?>"><span>▤</span><strong>Data Warga</strong><small>Daftar dan administrasi penduduk</small></a>
       <a class="dashboard-action" href="<?= e(app_url('perubahan')) ?>"><span>✓</span><strong>Verifikasi Data</strong><small>Periksa koreksi dan perpindahan</small></a>
       <a class="dashboard-action" href="<?= e(app_url('dokumen')) ?>"><span>▧</span><strong>Dokumen Warga</strong><small>Periksa dokumen privat KTP/KK</small></a>
-      <a class="dashboard-action" href="<?= e(app_url('admin-users')) ?>"><span>♙</span><strong>Akun RT/RW</strong><small>Kelola akun kerja wilayah</small></a>
+      <a class="dashboard-action" href="<?= e(app_url('admin-users')) ?>"><span>♙</span><strong><?= ($viewer['role'] ?? '') === 'owner' ? 'Akun & Hak Akses' : 'Akun RT/RW' ?></strong><small><?= ($viewer['role'] ?? '') === 'owner' ? 'Kelola akun kerja dan Admin Desa' : 'Kelola akun kerja wilayah' ?></small></a>
       <a class="dashboard-action" href="<?= e(app_url('admin-wilayah')) ?>"><span>⌖</span><strong>Wilayah Desa</strong><small>Kelola dusun, RW, dan RT</small></a>
       <a class="dashboard-action" href="<?= e(app_url('admin-services')) ?>"><span>▣</span><strong>Jenis Layanan</strong><small>Atur layanan dan persyaratan</small></a>
       <a class="dashboard-action" href="<?= e(app_url('admin-site')) ?>"><span>✎</span><strong>Website Desa</strong><small>Profil, kontak, dan tampilan</small></a>
