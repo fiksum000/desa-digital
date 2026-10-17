@@ -42,12 +42,19 @@ if (!isset($allowed[$role]) || !in_array($page, $allowed[$role], true)) {
 $tag = bin2hex(random_bytes(6));
 $username = 'ci-' . $role . '-' . $tag;
 $userId = 0;
+$auditFixtureId = 0;
 $exitCode = 0;
 try {
     $testName = $role === 'owner' ? 'CI Owner' : ($role === 'admin_desa' ? 'CI Admin Desa' : 'CI Warga');
     $stmt = $pdo->prepare('INSERT INTO app_users (username,full_name,password_hash,role,is_active,must_change_password,session_version) VALUES (?,?,?,?,1,0,1)');
     $stmt->execute([$username, $testName, password_hash(bin2hex(random_bytes(24)), PASSWORD_DEFAULT), $role]);
     $userId = (int)$pdo->lastInsertId();
+
+    if ($page === 'admin-audit') {
+        $auditFixture = $pdo->prepare('INSERT INTO audit_logs (actor_id,action,entity_type,entity_id,before_data,after_data) VALUES (?,?,?,?,?,?)');
+        $auditFixture->execute([$userId,'ci_viewer_probe','test_entity','CI-AUDIT-SAFE','{"secret_marker":"CI-AUDIT-SECRET-NEVER-RENDER"}','{"secret_marker":"CI-AUDIT-SECRET-NEVER-RENDER"}']);
+        $auditFixtureId = (int)$pdo->lastInsertId();
+    }
 
     $_SESSION['user'] = [
         'id'=>$userId,
@@ -92,7 +99,10 @@ try {
                 throw new RuntimeException('Audit log viewer is missing safe activity metadata or search controls: ' . $needle);
             }
         }
-        if (str_contains($html, '<th>Detail perubahan</th>') || str_contains($html, 'name="before_data"')) {
+        if (!str_contains($html, 'CI-AUDIT-SAFE')) {
+            throw new RuntimeException('Audit viewer should list the synthetic activity row.');
+        }
+        if (str_contains($html, 'CI-AUDIT-SECRET-NEVER-RENDER') || str_contains($html, '<th>Detail perubahan</th>') || str_contains($html, 'name="before_data"')) {
             throw new RuntimeException('Audit viewer must not render raw before/after payloads.');
         }
     } elseif ($page === 'admin-site' && $role === 'warga') {
@@ -112,6 +122,9 @@ try {
     fwrite(STDERR, "Dashboard smoke failed for {$role} / {$page}: " . $e->getMessage() . "\n");
     $exitCode = 1;
 } finally {
+    if ($auditFixtureId > 0) {
+        $pdo->prepare('DELETE FROM audit_logs WHERE id=?')->execute([$auditFixtureId]);
+    }
     if ($userId > 0) {
         $pdo->prepare('DELETE FROM app_users WHERE id=?')->execute([$userId]);
     }
