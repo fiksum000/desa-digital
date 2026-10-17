@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS app_users (
   full_name VARCHAR(160) NOT NULL,
   phone VARCHAR(30) NULL,
   password_hash VARCHAR(255) NOT NULL,
-  role ENUM('warga','rt','rw','petugas','admin_desa','kepala_desa') NOT NULL DEFAULT 'warga',
+  role ENUM('owner','warga','rt','rw','petugas','admin_desa','kepala_desa') NOT NULL DEFAULT 'warga',
   rt_id BIGINT UNSIGNED NULL,
   rw_id BIGINT UNSIGNED NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
