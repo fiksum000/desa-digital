@@ -65,6 +65,91 @@ function module_upload_private_file(array $file): array {
     ];
 }
 
+function module_normalize_import_header(string $header): string {
+    $header = preg_replace('/^\\xEF\\xBB\\xBF/', '', trim($header)) ?? trim($header);
+    $value = strtolower($header);
+    $value = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value;
+    $value = preg_replace('/[^a-z0-9]+/', '_', $value) ?? $value;
+    $value = trim($value, '_');
+    $aliases = [
+        'kk'=>'family_number','no_kk'=>'family_number','nomor_kk'=>'family_number','no_kartu_keluarga'=>'family_number','nomor_kartu_keluarga'=>'family_number','family_card_number'=>'family_number',
+        'no_nik'=>'nik','nomor_nik'=>'nik','nomor_induk_kependudukan'=>'nik',
+        'nama'=>'full_name','nama_lengkap'=>'full_name','name'=>'full_name',
+        'tanggal_lahir'=>'birth_date','tgl_lahir'=>'birth_date','date_of_birth'=>'birth_date',
+        'jenis_kelamin'=>'gender','kelamin'=>'gender',
+        'alamat'=>'address','alamat_lengkap'=>'address',
+        'no_hp'=>'phone','nomor_hp'=>'phone','telepon'=>'phone','nomor_telepon'=>'phone',
+        'hubungan'=>'relationship_to_head','hubungan_keluarga'=>'relationship_to_head'
+    ];
+    return $aliases[$value] ?? $value;
+}
+
+function module_parse_import_date(string $value, int $line): ?string {
+    $value=trim($value);
+    if($value==='') return null;
+    foreach(['!Y-m-d','!d/m/Y','!d-m-Y'] as $format) {
+        $date=DateTimeImmutable::createFromFormat($format,$value,new DateTimeZone('Asia/Jakarta'));
+        $errors=DateTimeImmutable::getLastErrors();
+        if($date && (!is_array($errors) || ($errors['warning_count']===0 && $errors['error_count']===0))) {
+            return $date->format('Y-m-d');
+        }
+    }
+    throw new RuntimeException("Baris {$line}: tanggal lahir harus YYYY-MM-DD atau DD/MM/YYYY.");
+}
+
+function module_read_resident_csv(string $path): array {
+    $handle=fopen($path,'rb');
+    if(!$handle) throw new RuntimeException('File CSV tidak dapat dibaca.');
+    try {
+        $first=fgets($handle);
+        if($first===false) throw new RuntimeException('File CSV kosong.');
+        $delimiter=substr_count($first,';')>substr_count($first,',')?';':',';
+        rewind($handle);
+        $rawHeaders=fgetcsv($handle,0,$delimiter,'"','\\\\');
+        if(!$rawHeaders || count($rawHeaders)<3) throw new RuntimeException('Header CSV tidak valid. Unduh template untuk melihat kolom wajib.');
+        $headers=[];
+        foreach($rawHeaders as $header) $headers[]=module_normalize_import_header((string)$header);
+        $required=['family_number','nik','full_name','address'];
+        foreach($required as $name) if(!in_array($name,$headers,true)) throw new RuntimeException('Kolom wajib tidak ditemukan: '.$name.'. Gunakan header nomor_kk; nik; nama_lengkap; alamat.');
+        $rows=[];$errors=[];$line=1;$seenNiks=[];
+        while(($fields=fgetcsv($handle,0,$delimiter,'"','\\\\'))!==false) {
+            $line++;
+            if(count($fields)===1 && trim((string)$fields[0])==='') continue;
+            if(count($fields)!==count($headers)) { $errors[]="Baris {$line}: jumlah kolom tidak sesuai header."; continue; }
+            $data=array_combine($headers,$fields);
+            $data=array_map(static fn($value)=>trim((string)$value),$data);
+            $family=preg_replace('/\\D/','',$data['family_number']??'') ?? '';
+            $nik=preg_replace('/\\D/','',$data['nik']??'') ?? '';
+            $name=trim((string)($data['full_name']??''));
+            $address=trim((string)($data['address']??''));
+            if(!preg_match('/^[0-9]{16}$/',$family)) { $errors[]="Baris {$line}: nomor KK harus 16 digit."; continue; }
+            if(!preg_match('/^[0-9]{16}$/',$nik)) { $errors[]="Baris {$line}: NIK harus 16 digit."; continue; }
+            if(mb_strlen($name)<3 || mb_strlen($name)>160) { $errors[]="Baris {$line}: nama tidak valid."; continue; }
+            if(mb_strlen($address)<5 || mb_strlen($address)>1000) { $errors[]="Baris {$line}: alamat tidak valid."; continue; }
+            if(isset($seenNiks[$nik])) { $errors[]="Baris {$line}: NIK duplikat di dalam file impor (lihat juga baris {$seenNiks[$nik]})."; continue; }
+            $seenNiks[$nik]=$line;
+            $gender=strtoupper(trim((string)($data['gender']??'unknown')));
+            if(in_array($gender,['LAKI-LAKI','LAKI LAKI','LAKI','PRIA','MALE'],true)) $gender='L';
+            if(in_array($gender,['PEREMPUAN','WANITA','FEMALE'],true)) $gender='P';
+            if(!in_array($gender,['L','P','UNKNOWN',''],true)) { $errors[]="Baris {$line}: jenis kelamin gunakan L, P, atau kosong."; continue; }
+            if($gender==='') $gender='unknown';
+            if($gender==='UNKNOWN') $gender='unknown';
+            try { $birth=module_parse_import_date((string)($data['birth_date']??''),$line); }
+            catch(RuntimeException $e) { $errors[]=$e->getMessage(); continue; }
+            $rows[]=[
+                'line'=>$line,'family_number'=>$family,'nik'=>$nik,'full_name'=>$name,
+                'address'=>$address,'birth_date'=>$birth,'gender'=>$gender,
+                'phone'=>mb_substr(trim((string)($data['phone']??'')),0,30),
+                'relationship_to_head'=>mb_substr(trim((string)($data['relationship_to_head']??'')),0,60),
+            ];
+        }
+        if(!$rows && !$errors) throw new RuntimeException('File CSV tidak memiliki baris data.');
+        return ['rows'=>$rows,'errors'=>$errors];
+    } finally {
+        fclose($handle);
+    }
+}
+
 function module_rt_options(): array {
     return db()->query('SELECT rt.id,rt.number_code,rw.number_code AS rw_code,d.name AS dusun_name
         FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id
