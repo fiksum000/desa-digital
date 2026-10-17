@@ -14,7 +14,7 @@ function load_text(string $relative): string {
     return is_file($path) ? (string)file_get_contents($path) : '';
 }
 foreach ([
-    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css', 'bin/migrate_service_letters.php', 'bin/migrate_owner_role.php', 'bin/create_owner.php',
+    'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css', 'bin/migrate_service_letters.php', 'bin/migrate_tracking_codes.php', 'bin/migrate_owner_role.php', 'bin/create_owner.php',
     'tests/dashboard_smoke.php', 'assets/app.js', 'assets/village-hero.svg', 'assets/village-hero.webp', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php', 'bin/backup.sh', 'bin/restore.sh',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
@@ -29,6 +29,11 @@ $encryptedNik = encrypt_private_identifier($rawNik);
 check_true($encryptedNik !== $rawNik, 'NIK harus disimpan dalam bentuk terenkripsi.');
 check_true(decrypt_private_identifier($encryptedNik) === $rawNik, 'NIK terenkripsi harus bisa dibuka hanya dengan APP_KEY yang sama.');
 check_true(role_label('owner') === 'Owner', 'The Owner role must have a dedicated display label.');
+check_true(e('<script>alert(1)</script>') === '&lt;script&gt;alert(1)&lt;/script&gt;', 'User-controlled/public CMS text must be HTML-escaped before rendering.');
+$validPublicImage = 'assets/uploads/' . str_repeat('a', 36) . '.webp';
+check_true(module_site_image_value_allowed('hero_image', $validPublicImage), 'CMS should accept generated local public image paths.');
+check_true(!module_site_image_value_allowed('hero_image', 'https://example.invalid/track.png'), 'CMS must reject remote image URLs to avoid external tracking/content injection.');
+check_true(!module_site_image_value_allowed('not-an-image-key', $validPublicImage), 'CMS must reject arbitrary image setting keys.');
 check_true(can_manage_content(['role'=>'owner']), 'Owner must have top-level content management access.');
 check_true(can_process_requests(['role'=>'owner']), 'Owner must have top-level request processing access.');
 check_true(str_contains(load_text('app/modules.php'), "case 'module_create_admin_account':") && str_contains(load_text('app/modules.php'), "module_require_role(['owner'])"), 'Only Owner may create Admin Desa accounts.');
@@ -135,12 +140,20 @@ foreach ([
 
 $index = load_text('index.php');
 foreach ([
-    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', "site_val('hero_image','assets/village-hero.webp')", 'user_notifications WHERE user_id=? ORDER BY',
+    'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', "site_image_val('hero_image','assets/village-hero.webp')", 'user_notifications WHERE user_id=? ORDER BY',
     'verify_csrf()', 'revision_requested',
     'SELECT tracking_code', "app_url('layanan',["
 ] as $needle) {
     check_true(str_contains($index, $needle), "App source missing expected functionality: {$needle}");
 }
+
+$generatedTrackingCode = tracking_code('SR');
+check_true((bool)preg_match('/^SR-[0-9]{6}-[A-F0-9]{32}$/', $generatedTrackingCode), 'New public tracking codes must contain a 128-bit random suffix.');
+check_true(str_contains(load_text('app/bootstrap.php'), 'bin2hex(random_bytes(16))'), 'Tracking tokens must keep a longer cryptographically random suffix.');
+check_true(substr_count($schema, 'tracking_code VARCHAR(48) NOT NULL UNIQUE') === 2, 'Both public tracking tables must accept the longer token.');
+check_true(str_contains($index, '/^[A-Z0-9-]{5,48}$/') && substr_count($index, 'maxlength="48"') >= 2, 'Tracking lookup and input forms must accept new tokens and legacy shorter codes.');
+$trackingMigration = load_text('bin/migrate_tracking_codes.php');
+check_true(str_contains($trackingMigration, 'VARCHAR(48)') && str_contains($trackingMigration, 'service_requests') && str_contains($trackingMigration, 'complaints'), 'Existing databases must have an idempotent migration for longer tracking tokens.');
 
 $modules = load_text('app/modules.php');
 foreach ([
@@ -299,6 +312,26 @@ check_true(str_contains(load_text('schema.sql'), "ENUM('owner','warga','rt','rw'
 check_true(str_contains($indexSource, 'module_serve_admin_resident_bundle();'), 'Admin resident bundle endpoint must be invoked by the request dispatcher.');
 
 
+// Public site copy/images must be editable through the Admin Desa/Owner CMS.
+$publicViews=load_text('app/module_views.php');$publicHandler=load_text('app/modules.php');$publicIndex=load_text('index.php');$publicCss=load_text('assets/style.css');$publicJs=load_text('assets/app.js');
+check_true(str_contains($publicViews,"'hero_cta_apply'=>'") && str_contains($publicViews,"'profile_intro'=>'") && str_contains($publicViews,"'map_title'=>'"), 'CMS must expose editable copy for public pages.');
+check_true(str_contains($publicHandler,"'register_image'") && str_contains($publicHandler,"'news_fallback_image'"), 'CMS handler must allowlist public image values.');
+check_true(str_contains($publicHandler,'module_site_image_value_allowed') && str_contains($publicHandler,'module_site_image_keys'), 'Site image publishing/restoration must validate image keys and paths.');
+check_true(str_contains(load_text('app/bootstrap.php'),"Content-Security-Policy: default-src 'self'") && str_contains(load_text('app/bootstrap.php'),"frame-ancestors 'none'"), 'Public responses must include a restrictive content security policy.');
+check_true(str_contains(load_text('app/bootstrap.php'),"Cache-Control: private, no-store, max-age=0") && str_contains(load_text('app/bootstrap.php'),"Pragma: no-cache"), 'Dynamic website responses must disable browser and shared-proxy caching.');
+check_true(str_contains(load_text('app/bootstrap.php'),"Strict-Transport-Security: max-age=15552000") && str_contains(load_text('app/bootstrap.php'),'$secureCookie'), 'HSTS support must be present and keyed to HTTPS configuration.');
+check_true(str_contains($publicIndex,'function public_image_src') && str_contains($publicIndex,'public_image_src($article'), 'Public article/news image URLs must be restricted to allowed local files.');
+check_true(str_contains($publicViews,"'admin-site' => ['admin_desa','owner']"), 'Public site CMS must be restricted to Admin Desa and Owner.');
+check_true(str_contains($publicIndex,"site_image_val('logo_image'") && str_contains($publicIndex,"site_image_val('login_image'") && str_contains($publicIndex,"site_image_val('register_image'"), 'Brand and auth images must use CMS-managed values.');
+check_true(str_contains($publicIndex,"site_val('home_news_title'") && str_contains($publicIndex,"site_val('nav_home'") && str_contains($publicIndex,"site_val('footer_summary'"), 'Navigation, home sections, and footer copy must use managed values.');
+check_true(str_contains($publicCss,'object-fit:cover') && str_contains($publicCss,'.news-image img') && str_contains($publicCss,'.auth-intro>img'), 'Public images must auto-fit responsive frames.');
+check_true(str_contains($publicIndex,"SELECT content_key,content_value FROM site_content WHERE status='published'") && str_contains($publicIndex,'$siteContent[(string)$siteRow[\'content_key\']]'), 'Public renderer must load only published CMS values, never drafts.');
+check_true(str_contains($publicIndex,'function site_image_val') && str_contains($publicIndex,'is_uploaded_file($tmp)') && str_contains($publicIndex,'getimagesize($tmp)'), 'CMS image rendering and uploads must validate paths, upload origin, file signature, and dimensions.');
+check_true(str_contains($publicJs,'[data-preview-image-key]') && str_contains($publicJs,'data-preview-site-image'), 'CMS must preview replacement images.');
+check_true(str_contains($publicViews,'reset_site_image[') && str_contains($publicHandler,'$resetImages=$_POST[\'reset_site_image\']'), 'Admin Desa/Owner must be able to restore default public images without uploading a placeholder.');
+check_true(str_contains($publicViews,'data-site-setting-filter') && str_contains($publicJs,'siteSettingFilter'), 'Large public-content CMS must have a working settings search.');
+check_true(str_contains($publicIndex,"site_val('news_fallback_alt'") && str_contains($publicIndex,"site_val('nav_open_menu_aria'") && str_contains($publicJs,"data-close-label"), 'Public image alt text and menu accessibility labels must be editable.');
+check_true(str_contains($publicViews,'data-setting-key') && str_contains($publicJs,'siteSettingFilter.value'), 'CMS search must match editable setting keys/labels.');
 if ($failures) {
     fwrite(STDERR, "FAILED: " . count($failures) . " of {$checks} checks\n");
     foreach ($failures as $failure) fwrite(STDERR, " - {$failure}\n");

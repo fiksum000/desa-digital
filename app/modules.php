@@ -275,6 +275,17 @@ function module_create_rt_account(array $user): never {
     redirect_to('admin-users');
 }
 
+function module_site_image_keys(): array {
+    return ['hero_image','logo_image','login_image','register_image','news_fallback_image'];
+}
+function module_site_image_value_allowed(string $key,string $value): bool {
+    if(!in_array($key,module_site_image_keys(),true)) return false;
+    if($value==='') return true;
+    $defaults=['hero_image'=>['assets/village-hero.svg','assets/village-hero.webp'],'logo_image'=>[],
+        'login_image'=>['assets/village-hero.svg','assets/village-hero.webp'],'register_image'=>['assets/village-hero.svg','assets/village-hero.webp'],
+        'news_fallback_image'=>['assets/village-hero.svg','assets/village-hero.webp']];
+    return in_array($value,$defaults[$key],true)||(bool)preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#',$value);
+}
 function module_upload_public_pdf(string $field): ?string {
     if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
     $file=$_FILES[$field];
@@ -904,11 +915,11 @@ function module_handle_post(): void {
                 if(!$revision) throw new RuntimeException('Draf tidak ditemukan atau sudah diproses.');
                 $key=(string)$revision['content_key'];$value=(string)$revision['content_value'];
                 if($key==='map_public_url' && $value!=='' && (!filter_var($value,FILTER_VALIDATE_URL) || parse_url($value,PHP_URL_SCHEME)!=='https')) throw new RuntimeException('Tautan peta draf tidak valid. Simpan ulang menggunakan URL HTTPS.');
-                if($key==='hero_image' && !($value==='assets/village-hero.svg' || preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#',$value))) throw new RuntimeException('Foto hero draf tidak menunjuk ke berkas gambar yang diizinkan.');
+                if(in_array($key,module_site_image_keys(),true) && !module_site_image_value_allowed($key,$value)) throw new RuntimeException('Gambar draf tidak menunjuk ke berkas gambar yang diizinkan.');
                 $pdo->beginTransaction();
                 $stmt=$pdo->prepare('SELECT id,content_value,value_type FROM site_content WHERE content_key=? LIMIT 1');
                 $stmt->execute([$key]);$current=$stmt->fetch();
-                $type=$key==='hero_image'?'image':'text';
+                $type=in_array($key,module_site_image_keys(),true)?'image':'text';
                 if($current) {
                     $pdo->prepare('INSERT INTO site_content_versions (content_id,content_value,editor_id) VALUES (?,?,?)')->execute([(int)$current['id'],(string)$current['content_value'],(int)$user['id']]);
                     $pdo->prepare("UPDATE site_content SET content_value=?,value_type=?,status='published',updated_by=? WHERE id=?")->execute([$value,$type,(int)$user['id'],(int)$current['id']]);
@@ -931,7 +942,7 @@ function module_handle_post(): void {
                 if(!$version) throw new RuntimeException('Versi lama tidak ditemukan.');
                 $key=(string)$version['content_key'];$value=(string)$version['content_value'];
                 if($key==='map_public_url' && $value!=='' && (!filter_var($value,FILTER_VALIDATE_URL) || parse_url($value,PHP_URL_SCHEME)!=='https')) throw new RuntimeException('Versi lama berisi tautan peta yang tidak valid. Pulihkan melalui editor setelah memperbaikinya.');
-                if($key==='hero_image' && !($value==='assets/village-hero.svg' || preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#',$value))) throw new RuntimeException('Versi foto tidak menunjuk ke berkas gambar yang diizinkan.');
+                if(in_array($key,module_site_image_keys(),true) && !module_site_image_value_allowed($key,$value)) throw new RuntimeException('Versi gambar tidak menunjuk ke berkas gambar yang diizinkan.');
                 $pdo->beginTransaction();
                 $currentStmt=$pdo->prepare('SELECT content_value FROM site_content WHERE id=? LIMIT 1');
                 $currentStmt->execute([(int)$version['content_id']]);$currentValue=(string)$currentStmt->fetchColumn();
@@ -972,6 +983,119 @@ function module_handle_post(): void {
                     'office_phone'=>['label'=>'Nomor kontak kantor','max'=>80],
                     'stat_area'=>['label'=>'Luas wilayah','max'=>60],
                     'stat_dusun'=>['label'=>'Jumlah dusun','max'=>30],
+                    'meta_description'=>['label'=>'Deskripsi SEO','max'=>300],'village_brand_prefix'=>['label'=>'Awalan logo','max'=>40],
+                    'nav_home'=>['label'=>'Menu Beranda','max'=>60],'nav_services'=>['label'=>'Menu Layanan','max'=>80],'nav_news'=>['label'=>'Menu Berita','max'=>100],
+                    'nav_complaints'=>['label'=>'Menu Pengaduan','max'=>80],'nav_profile'=>['label'=>'Menu Profil','max'=>80],'nav_more'=>['label'=>'Menu Lainnya','max'=>60],
+                    'nav_umkm'=>['label'=>'Menu UMKM','max'=>80],'nav_map'=>['label'=>'Menu Peta','max'=>60],'nav_budget'=>['label'=>'Menu Transparansi','max'=>100],
+                    'nav_contact'=>['label'=>'Menu Kontak','max'=>60],'nav_search_aria'=>['label'=>'Aksesibilitas pencarian','max'=>100],'nav_login'=>['label'=>'Tombol masuk','max'=>60],
+                    'news_fallback_alt'=>['label'=>'Teks alternatif gambar pengganti berita/UMKM','max'=>150],
+                    'news_read_label'=>['label'=>'Label aksesibilitas tautan baca berita','max'=>80],
+                    'nav_open_menu_aria'=>['label'=>'Label buka menu HP','max'=>100],
+                    'nav_close_menu_aria'=>['label'=>'Label tutup menu HP','max'=>100],
+                    'nav_main_aria'=>['label'=>'Label aksesibilitas navigasi utama','max'=>100],
+                    'nav_mobile_drawer_aria'=>['label'=>'Label aksesibilitas menu tambahan HP','max'=>100],
+                    'home_service_strip_aria'=>['label'=>'Label aksesibilitas layanan utama','max'=>100],
+                    'mobile_nav_aria'=>['label'=>'Label aksesibilitas navigasi bawah HP','max'=>100],
+                    'footer_summary'=>['label'=>'Ringkasan footer','max'=>500],'footer_tagline'=>['label'=>'Slogan footer','max'=>500],'footer_services'=>['label'=>'Tagline footer','max'=>500],
+                    'home_eyebrow'=>['label'=>'Label hero','max'=>100],'hero_cta_apply'=>['label'=>'Tombol surat','max'=>80],'hero_cta_track'=>['label'=>'Tombol lacak','max'=>80],
+                    'benefit_easy'=>['label'=>'Keunggulan 1','max'=>100],'benefit_fast'=>['label'=>'Keunggulan 2','max'=>100],'benefit_transparent'=>['label'=>'Keunggulan 3','max'=>100],'benefit_all'=>['label'=>'Keunggulan 4','max'=>100],
+                    'service_card_service_title'=>['label'=>'Judul kartu layanan','max'=>120],'service_card_service_text'=>['label'=>'Deskripsi kartu layanan','max'=>400],
+                    'service_card_complaint_title'=>['label'=>'Judul kartu pengaduan','max'=>120],'service_card_complaint_text'=>['label'=>'Deskripsi kartu pengaduan','max'=>400],
+                    'service_card_info_title'=>['label'=>'Judul kartu informasi','max'=>120],'service_card_info_text'=>['label'=>'Deskripsi kartu informasi','max'=>400],
+                    'home_tracking_title'=>['label'=>'Judul pelacakan','max'=>120],'home_tracking_subtitle'=>['label'=>'Deskripsi pelacakan','max'=>300],'tracking_placeholder'=>['label'=>'Placeholder pelacakan','max'=>120],
+                    'home_news_title'=>['label'=>'Judul berita beranda','max'=>120],'home_news_subtitle'=>['label'=>'Deskripsi berita beranda','max'=>500],'news_see_all'=>['label'=>'Lihat semua berita','max'=>80],
+                    'home_no_news_title'=>['label'=>'Judul berita kosong','max'=>200],'home_no_news_text'=>['label'=>'Teks berita kosong','max'=>500],
+                    'stat_residents_label'=>['label'=>'Label penduduk','max'=>80],'stat_families_label'=>['label'=>'Label KK','max'=>80],'stat_area_label'=>['label'=>'Label wilayah','max'=>80],
+                    'stat_dusun_label'=>['label'=>'Label dusun','max'=>80],'stats_aria_label'=>['label'=>'Aksesibilitas statistik','max'=>120],
+                    'services_eyebrow'=>['label'=>'Label layanan','max'=>80],'services_title'=>['label'=>'Judul layanan','max'=>120],'services_intro'=>['label'=>'Deskripsi layanan','max'=>800],'services_list_title'=>['label'=>'Judul daftar layanan','max'=>120],
+                    'complaints_eyebrow'=>['label'=>'Label pengaduan','max'=>80],'complaints_intro'=>['label'=>'Deskripsi pengaduan','max'=>800],'complaints_form_title'=>['label'=>'Judul formulir pengaduan','max'=>120],
+                    'complaints_login_text'=>['label'=>'Pesan belum masuk','max'=>500],'complaints_wrong_role_text'=>['label'=>'Pesan akun bukan warga','max'=>500],
+                    'complaints_title_label'=>['label'=>'Label judul laporan','max'=>100],'complaints_category_label'=>['label'=>'Label kategori','max'=>100],
+                    'complaints_detail_label'=>['label'=>'Label detail laporan','max'=>100],'complaints_submit_label'=>['label'=>'Tombol kirim pengaduan','max'=>100],
+                    'tracking_eyebrow'=>['label'=>'Label pelacakan','max'=>80],'tracking_title'=>['label'=>'Judul pelacakan','max'=>120],'tracking_intro'=>['label'=>'Deskripsi pelacakan','max'=>800],
+                    'tracking_check_button'=>['label'=>'Tombol periksa','max'=>60],'tracking_not_found'=>['label'=>'Pesan kode tidak ditemukan','max'=>300],
+                    'news_eyebrow'=>['label'=>'Label berita','max'=>80],'news_title'=>['label'=>'Judul berita','max'=>120],'news_intro'=>['label'=>'Deskripsi berita','max'=>800],
+                    'news_empty_title'=>['label'=>'Judul berita kosong','max'=>200],'news_empty_text'=>['label'=>'Teks berita kosong','max'=>500],
+                    'article_notfound_title'=>['label'=>'Judul artikel kosong','max'=>120],'article_notfound_intro'=>['label'=>'Deskripsi artikel kosong','max'=>500],'article_back_label'=>['label'=>'Kembali ke berita','max'=>80],
+                    'profile_eyebrow'=>['label'=>'Label profil','max'=>80],'profile_title'=>['label'=>'Judul profil','max'=>120],'profile_intro'=>['label'=>'Deskripsi profil','max'=>800],
+                    'profile_history_title'=>['label'=>'Judul sejarah','max'=>120],'profile_potential_title'=>['label'=>'Judul potensi','max'=>120],'profile_contact_title'=>['label'=>'Judul kontak profil','max'=>120],
+                    'profile_contact_text'=>['label'=>'Teks kontak profil','max'=>500],'profile_history_fallback'=>['label'=>'Teks sejarah bawaan','max'=>500],'profile_potential_fallback'=>['label'=>'Teks potensi bawaan','max'=>500],
+                    'login_eyebrow'=>['label'=>'Label masuk','max'=>80],'login_title_prefix'=>['label'=>'Awalan judul masuk','max'=>100],'login_title_highlight'=>['label'=>'Sorotan judul masuk','max'=>120],
+                    'login_intro'=>['label'=>'Deskripsi masuk','max'=>500],'login_form_title'=>['label'=>'Judul formulir masuk','max'=>120],'login_submit_label'=>['label'=>'Tombol masuk','max'=>80],
+                    'login_register_prompt'=>['label'=>'Ajakan daftar','max'=>160],'register_eyebrow'=>['label'=>'Label daftar','max'=>80],'register_title_prefix'=>['label'=>'Awalan judul daftar','max'=>100],
+                    'register_title_highlight'=>['label'=>'Sorotan judul daftar','max'=>120],'register_intro'=>['label'=>'Deskripsi daftar','max'=>500],'register_form_title'=>['label'=>'Judul formulir daftar','max'=>120],
+                    'register_submit_label'=>['label'=>'Tombol daftar','max'=>80],'register_login_prompt'=>['label'=>'Ajakan masuk','max'=>160],'register_password_hint'=>['label'=>'Petunjuk sandi','max'=>120],
+                    'register_link_label'=>['label'=>'Tautan daftar','max'=>80],'login_link_label'=>['label'=>'Tautan masuk','max'=>80],
+                    'page_title_home'=>['label'=>'Judul tab beranda','max'=>120],'page_title_services'=>['label'=>'Judul tab layanan','max'=>120],
+                    'page_title_complaints'=>['label'=>'Judul tab pengaduan','max'=>120],'page_title_track'=>['label'=>'Judul tab pelacakan','max'=>120],
+                    'page_title_news'=>['label'=>'Judul tab berita','max'=>120],'page_title_article'=>['label'=>'Judul tab artikel','max'=>120],
+                    'page_title_profile'=>['label'=>'Judul tab profil','max'=>120],'page_title_login'=>['label'=>'Judul tab masuk','max'=>120],
+                    'page_title_register'=>['label'=>'Judul tab pendaftaran','max'=>120],
+                    'umkm_title'=>['label'=>'Judul UMKM','max'=>120],'umkm_empty_title'=>['label'=>'Judul UMKM kosong','max'=>200],'umkm_empty_text'=>['label'=>'Deskripsi UMKM kosong','max'=>500],
+                    'map_title'=>['label'=>'Judul peta','max'=>120],'map_intro'=>['label'=>'Deskripsi peta','max'=>800],'map_location_title'=>['label'=>'Judul lokasi peta','max'=>120],
+                    'map_link_text'=>['label'=>'Tombol peta','max'=>100],'map_empty_text'=>['label'=>'Deskripsi peta kosong','max'=>500],
+                    'transparansi_title'=>['label'=>'Judul transparansi','max'=>120],'transparansi_empty_title'=>['label'=>'Judul laporan kosong','max'=>200],
+                    'transparansi_empty_text'=>['label'=>'Deskripsi laporan kosong','max'=>500],'contact_title'=>['label'=>'Judul kontak','max'=>120],
+                    'office_address_title'=>['label'=>'Judul alamat kantor','max'=>120],'contact_phone_title'=>['label'=>'Judul telepon/WA','max'=>120],
+                    'contact_info_title'=>['label'=>'Judul informasi kontak','max'=>120],'page_unavailable_title'=>['label'=>'Judul 404','max'=>120],
+                    'page_unavailable_text'=>['label'=>'Deskripsi 404','max'=>500],'page_home_button'=>['label'=>'Tombol beranda','max'=>80],
+                    'services_eta_prefix'=>['label'=>'Awalan estimasi layanan','max'=>120],
+                    'services_eta_suffix'=>['label'=>'Akhiran estimasi layanan','max'=>120],
+                    'services_apply_button'=>['label'=>'Tombol ajukan layanan','max'=>120],
+                    'services_login_for_apply'=>['label'=>'Teks masuk untuk mengajukan','max'=>120],
+                    'services_empty_text'=>['label'=>'Pesan saat belum ada layanan','max'=>400],
+                    'service_apply_form_title'=>['label'=>'Judul formulir pengajuan','max'=>120],
+                    'service_apply_type_label'=>['label'=>'Label jenis layanan','max'=>120],
+                    'service_apply_subject_label'=>['label'=>'Label keperluan/subjek','max'=>120],
+                    'service_apply_details_label'=>['label'=>'Label keterangan tambahan','max'=>120],
+                    'service_apply_attachments_label'=>['label'=>'Label lampiran persyaratan','max'=>200],
+                    'service_apply_attachment_hint'=>['label'=>'Petunjuk format lampiran','max'=>300],
+                    'service_apply_submit_button'=>['label'=>'Tombol kirim pengajuan','max'=>120],
+                    'complaint_category_umum'=>['label'=>'Kategori pengaduan umum','max'=>80],
+                    'complaint_category_infrastruktur'=>['label'=>'Kategori pengaduan infrastruktur','max'=>80],
+                    'complaint_category_pelayanan'=>['label'=>'Kategori pengaduan pelayanan','max'=>80],
+                    'complaint_category_lingkungan'=>['label'=>'Kategori pengaduan lingkungan','max'=>80],
+                    'complaint_category_sosial'=>['label'=>'Kategori pengaduan sosial','max'=>80],
+                    'tracking_public_note_fallback'=>['label'=>'Pesan saat belum ada catatan pelacakan','max'=>300],
+                    'tracking_code_label'=>['label'=>'Label kode pelacakan','max'=>80],
+                    'tracking_sent_label'=>['label'=>'Label tanggal pengajuan','max'=>80],
+                    'tracking_last_update_label'=>['label'=>'Label pembaruan terakhir','max'=>80],
+                    'login_instructions'=>['label'=>'Petunjuk formulir masuk','max'=>400],
+                    'login_username_label'=>['label'=>'Label username masuk','max'=>100],
+                    'login_password_label'=>['label'=>'Label kata sandi masuk','max'=>100],
+                    'register_name_label'=>['label'=>'Label nama lengkap','max'=>100],
+                    'register_username_label'=>['label'=>'Label username pendaftaran','max'=>100],
+                    'register_email_label'=>['label'=>'Label email pendaftaran','max'=>100],
+                    'register_email_hint'=>['label'=>'Petunjuk email opsional','max'=>100],
+                    'register_password_label'=>['label'=>'Label kata sandi pendaftaran','max'=>100],
+                    'article_body_back_label'=>['label'=>'Tautan kembali dari artikel','max'=>120],
+                    'directory_location_label'=>['label'=>'Label lokasi UMKM/wisata','max'=>80],
+                    'directory_contact_label'=>['label'=>'Label kontak UMKM/wisata','max'=>80],
+                    'map_public_link_intro'=>['label'=>'Pengantar tautan peta','max'=>500],
+                    'budget_amount_label'=>['label'=>'Label nilai ringkasan anggaran','max'=>80],
+                    'budget_pdf_link_label'=>['label'=>'Tautan dokumen PDF anggaran','max'=>80],
+                    'mobile_nav_home'=>['label'=>'Label navigasi HP beranda','max'=>60],
+                    'mobile_nav_services'=>['label'=>'Label navigasi HP layanan','max'=>60],
+                    'mobile_nav_news'=>['label'=>'Label navigasi HP berita','max'=>60],
+                    'mobile_nav_complaints'=>['label'=>'Label navigasi HP pengaduan','max'=>60],
+                    'mobile_nav_profile'=>['label'=>'Label navigasi HP profil','max'=>60],
+                    'mobile_nav_login'=>['label'=>'Label navigasi HP masuk','max'=>60],
+                    'status_submitted'=>['label'=>'Status diajukan','max'=>80],
+                    'status_in_review'=>['label'=>'Status sedang diperiksa','max'=>80],
+                    'status_revision_requested'=>['label'=>'Status perlu perbaikan','max'=>80],
+                    'status_approved'=>['label'=>'Status disetujui','max'=>80],
+                    'status_rejected'=>['label'=>'Status ditolak','max'=>80],
+                    'status_ready'=>['label'=>'Status siap diambil','max'=>80],
+                    'status_completed'=>['label'=>'Status selesai','max'=>80],
+                    'status_cancelled'=>['label'=>'Status dibatalkan','max'=>80],
+                    'status_received'=>['label'=>'Status diterima','max'=>80],
+                    'status_in_progress'=>['label'=>'Status ditindaklanjuti','max'=>80],
+                    'status_waiting_reporter'=>['label'=>'Status menunggu keterangan','max'=>80],
+                    'status_conflict'=>['label'=>'Status konflik data','max'=>80],
+                    'status_resolved'=>['label'=>'Status tuntas','max'=>80],
+                    'status_published'=>['label'=>'Status terbit','max'=>80],
+                    'status_draft'=>['label'=>'Status draf','max'=>80],
+                    'status_archived'=>['label'=>'Status arsip','max'=>80],
                 ];
                 $values=[];
                 foreach($fields as $key=>$meta) {
@@ -989,8 +1113,17 @@ function module_handle_post(): void {
                         throw new RuntimeException('Tautan peta harus berupa URL HTTPS yang valid.');
                     }
                 }
-                $image=upload_public_image('hero_image');
-                if($image) $values['hero_image']=$image;
+                $resetImages=$_POST['reset_site_image'] ?? [];
+                if(!is_array($resetImages)) throw new RuntimeException('Pilihan reset gambar tidak valid.');
+                foreach(module_site_image_keys() as $imageKey) {
+                    $image=upload_public_image($imageKey);
+                    if($image) {
+                        $values[$imageKey]=$image;
+                    } elseif(isset($resetImages[$imageKey])) {
+                        if((string)$resetImages[$imageKey]!=='1') throw new RuntimeException('Pilihan reset gambar tidak valid.');
+                        $values[$imageKey]='';
+                    }
+                }
                 $operation=(string)($_POST['operation'] ?? 'draft');
                 if(!in_array($operation,['draft','publish'],true)) throw new RuntimeException('Pilihan simpan tidak valid.');
                 $pdo->beginTransaction();
@@ -1002,9 +1135,9 @@ function module_handle_post(): void {
                         $stmt->execute([$key]);$old=$stmt->fetch();
                         if($old) {
                             $pdo->prepare('INSERT INTO site_content_versions (content_id,content_value,editor_id) VALUES (?,?,?)')->execute([(int)$old['id'],(string)$old['content_value'],(int)$user['id']]);
-                            $pdo->prepare("UPDATE site_content SET content_value=?,value_type=?,status='published',updated_by=? WHERE id=?")->execute([$value,$key==='hero_image'?'image':'text',(int)$user['id'],(int)$old['id']]);
+                            $pdo->prepare("UPDATE site_content SET content_value=?,value_type=?,status='published',updated_by=? WHERE id=?")->execute([$value,in_array($key,module_site_image_keys(),true)?'image':'text',(int)$user['id'],(int)$old['id']]);
                         } else {
-                            $pdo->prepare("INSERT INTO site_content (content_key,content_value,value_type,status,updated_by) VALUES (?,?,?,'published',?)")->execute([$key,$value,$key==='hero_image'?'image':'text',(int)$user['id']]);
+                            $pdo->prepare("INSERT INTO site_content (content_key,content_value,value_type,status,updated_by) VALUES (?,?,?,'published',?)")->execute([$key,$value,in_array($key,module_site_image_keys(),true)?'image':'text',(int)$user['id']]);
                         }
                         $pdo->prepare("UPDATE site_content_revisions SET status='archived' WHERE content_key=? AND status='draft'")->execute([$key]);
                     }

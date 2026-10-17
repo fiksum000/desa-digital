@@ -57,6 +57,8 @@ jobs:
         run: APP_KEY="$(openssl rand -hex 32)" php bin/migrate_private_identifiers.php
       - name: Verify service letter migration is idempotent
         run: APP_KEY="$(openssl rand -hex 32)" php bin/migrate_service_letters.php
+      - name: Verify public tracking code migration is idempotent
+        run: APP_KEY="$(openssl rand -hex 32)" php bin/migrate_tracking_codes.php
       - name: Authenticated RT and document module page smoke tests
         run: |
           APP_KEY="$(openssl rand -hex 32)" php tests/module_page_smoke.php rt-data
@@ -68,18 +70,27 @@ jobs:
           APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner dashboard
           APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-users
           APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-resident-export
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php admin_desa admin-site
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php owner admin-site
+          APP_KEY="$(openssl rand -hex 32)" php tests/dashboard_smoke.php warga admin-site
       - name: Public homepage HTTP smoke test
         run: |
           APP_KEY="$(openssl rand -hex 32)" php -S 127.0.0.1:8080 -t . >/tmp/desa-digital-php.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do
-            if curl --fail --silent --show-error http://127.0.0.1:8080/index.php?page=home -o /tmp/desa-digital-home.html; then
+            if curl --fail --silent --show-error -D /tmp/desa-digital-home-headers.txt http://127.0.0.1:8080/index.php?page=home -o /tmp/desa-digital-home.html; then
               break
             fi
             sleep 1
           done
           test -s /tmp/desa-digital-home.html
+          test -s /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^cache-control: private, no-store, max-age=0' /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^pragma: no-cache' /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^x-content-type-options: nosniff' /tmp/desa-digital-home-headers.txt
+          grep -Eiq '^x-frame-options: DENY' /tmp/desa-digital-home-headers.txt
+          grep -Fqi "frame-ancestors 'none'" /tmp/desa-digital-home-headers.txt
           grep -F 'Layanan desa,' /tmp/desa-digital-home.html
           # Guard the main visual sections from accidental removal during UI changes.
           grep -F 'Ajukan Surat' /tmp/desa-digital-home.html
@@ -87,6 +98,6 @@ jobs:
           grep -F 'Layanan Surat' /tmp/desa-digital-home.html
           grep -F 'Pengaduan Warga' /tmp/desa-digital-home.html
           grep -F 'Cek Status Pengajuan' /tmp/desa-digital-home.html
-          grep -F 'Berita & Pengumuman' /tmp/desa-digital-home.html
+          grep -F 'Berita &amp; Pengumuman' /tmp/desa-digital-home.html
           grep -F 'Jumlah Penduduk' /tmp/desa-digital-home.html
           grep -F 'Navigasi mobile' /tmp/desa-digital-home.html

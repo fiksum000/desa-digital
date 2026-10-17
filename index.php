@@ -21,13 +21,14 @@ $stats = ['residents' => null, 'families' => null, 'dusun' => null];
 $adminDashboardStats = ['rts'=>null,'rws'=>null,'pending_documents'=>null,'pending_changes'=>null,'open_requests'=>null,'open_complaints'=>null,'active_users'=>null];
 
 function status_text(string $status): string {
-    return [
+    $labels = [
         'submitted'=>'Diajukan','in_review'=>'Sedang diperiksa','revision_requested'=>'Perlu perbaikan',
         'approved'=>'Disetujui','rejected'=>'Ditolak','ready'=>'Siap diambil','completed'=>'Selesai',
         'cancelled'=>'Dibatalkan','received'=>'Diterima','in_progress'=>'Ditindaklanjuti',
         'waiting_reporter'=>'Menunggu keterangan','conflict'=>'Konflik data','resolved'=>'Tuntas','published'=>'Terbit','draft'=>'Draf',
         'archived'=>'Arsip'
-    ][$status] ?? ucfirst(str_replace('_',' ',$status));
+    ];
+    return site_val('status_'.$status, $labels[$status] ?? ucfirst(str_replace('_',' ',$status)));
 }
 function status_class(string $status): string {
     return in_array($status, ['approved','completed','resolved','published','ready'], true) ? 'good'
@@ -73,6 +74,29 @@ function site_val(string $key, string $default = ''): string {
     return isset($siteContent[$key]) ? (string)$siteContent[$key] : $default;
 }
 
+/**
+ * Resolve only CMS-managed relative image paths. If the database ever contains
+ * an unexpected path, ignore it rather than emitting it into a public img src.
+ */
+function site_image_val(string $key, string $default = ''): string {
+    $imageKeys = ['hero_image','logo_image','login_image','register_image','news_fallback_image'];
+    if (!in_array($key, $imageKeys, true)) return $default;
+    $value = trim(site_val($key, ''));
+    if ($value === '') return $default;
+    return public_image_src($value, $default);
+}
+
+/**
+ * Only allow image paths created by this application or its shipped local assets.
+ * This check also protects news/directory image references if a database row is corrupt.
+ */
+function public_image_src(?string $candidate, string $default = 'assets/village-hero.webp'): string {
+    $value = trim((string)$candidate);
+    if ($value === '') return $default;
+    if (in_array($value, ['assets/village-hero.svg','assets/village-hero.webp'], true)) return $value;
+    return preg_match('#^assets/uploads/[a-f0-9]{36}\\.(jpg|png|webp)$#D', $value) === 1 ? $value : $default;
+}
+
 if ($viewer && !empty($viewer['must_change_password'])) {
     $requestedAction = $_SERVER['REQUEST_METHOD'] === 'POST' ? (string)($_POST['action'] ?? '') : '';
     if ($page !== 'change-password' && !in_array($requestedAction, ['change_password','logout'], true)) {
@@ -83,17 +107,29 @@ if ($viewer && !empty($viewer['must_change_password'])) {
 function upload_public_image(string $field): ?string {
     if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) return null;
     $file = $_FILES[$field];
-    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || (int)$file['size'] > 5 * 1024 * 1024) {
-        throw new RuntimeException('Gambar gagal diunggah atau melebihi 5 MB.');
+    $tmp = (string)($file['tmp_name'] ?? '');
+    $size = (int)($file['size'] ?? 0);
+    if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || $size < 1 || $size > 5 * 1024 * 1024 || !is_uploaded_file($tmp)) {
+        throw new RuntimeException('Gambar gagal diunggah, file tidak valid, atau melebihi 5 MB.');
     }
     $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($file['tmp_name']);
+    $mime = $finfo->file($tmp);
     $extensions = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];
-    if (!isset($extensions[$mime])) throw new RuntimeException('Format gambar harus JPG, PNG, atau WebP.');
+    if (!is_string($mime) || !isset($extensions[$mime])) throw new RuntimeException('Format gambar harus JPG, PNG, atau WebP.');
+    $imageInfo = @getimagesize($tmp);
+    if (!is_array($imageInfo) || ($imageInfo['mime'] ?? '') !== $mime) {
+        throw new RuntimeException('Isi file tidak cocok dengan format gambar yang diizinkan.');
+    }
+    $width = (int)($imageInfo[0] ?? 0);
+    $height = (int)($imageInfo[1] ?? 0);
+    // Bound decompression cost while allowing wide/tall images and arbitrary aspect ratios.
+    if ($width < 1 || $height < 1 || $width > 20000 || $height > 20000 || ($width * $height) > 40000000) {
+        throw new RuntimeException('Resolusi gambar terlalu besar. Gunakan gambar maksimal 40 megapiksel.');
+    }
     $dir = __DIR__ . '/assets/uploads';
     if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) throw new RuntimeException('Penyimpanan gambar tidak tersedia.');
     $name = bin2hex(random_bytes(18)) . '.' . $extensions[$mime];
-    if (!move_uploaded_file($file['tmp_name'], $dir . '/' . $name)) throw new RuntimeException('Gagal menyimpan gambar.');
+    if (!move_uploaded_file($tmp, $dir . '/' . $name)) throw new RuntimeException('Gagal menyimpan gambar.');
     return 'assets/uploads/' . $name;
 }
 
@@ -499,9 +535,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 try {
     $pdo = db();
+    // Read only published website content for public rendering. Drafts remain private
+    // to the editor and must never leak into the anonymous pages.
+    $siteStmt = $pdo->query("SELECT content_key,content_value FROM site_content WHERE status='published'");
+    foreach ($siteStmt->fetchAll() as $siteRow) {
+        $siteContent[(string)$siteRow['content_key']] = trim((string)$siteRow['content_value']);
+    }
     if ($page === 'track' && isset($_GET['code'])) {
         $code = strtoupper(trim((string)$_GET['code']));
-        if (preg_match('/^[A-Z0-9-]{5,32}$/', $code)) {
+        if (preg_match('/^[A-Z0-9-]{5,48}$/', $code)) {
             $stmt = $pdo->prepare('SELECT tracking_code,subject AS title,status,public_status_note AS public_note,created_at,updated_at,\'service\' AS item_type FROM service_requests WHERE tracking_code=? UNION ALL SELECT tracking_code,title,status,public_response,created_at,updated_at,\'complaint\' AS item_type FROM complaints WHERE tracking_code=? LIMIT 1');
             $stmt->execute([$code,$code]); $tracking = $stmt->fetch() ?: null;
         }
@@ -534,7 +576,13 @@ try {
 }
 
 $flashMessage = take_flash();
-$pageTitles = ['home'=>'Beranda','layanan'=>'Layanan Desa','pengaduan'=>'Pengaduan Warga','track'=>'Lacak Pengajuan','berita'=>'Berita & Pengumuman','article'=>'Berita','profil'=>'Profil Desa','login'=>'Masuk','register'=>'Daftar Akun','dashboard'=>'Dashboard Saya','change-password'=>'Ganti Kata Sandi','admin'=>'Panel Pengelolaan'];
+$pageTitles = [
+    'home'=>site_val('page_title_home','Beranda'),'layanan'=>site_val('page_title_services','Layanan Desa'),
+    'pengaduan'=>site_val('page_title_complaints','Pengaduan Warga'),'track'=>site_val('page_title_track','Lacak Pengajuan'),
+    'berita'=>site_val('page_title_news','Berita & Pengumuman'),'article'=>site_val('page_title_article','Berita'),
+    'profil'=>site_val('page_title_profile','Profil Desa'),'login'=>site_val('page_title_login','Masuk'),
+    'register'=>site_val('page_title_register','Daftar Akun'),'dashboard'=>'Dashboard Saya','change-password'=>'Ganti Kata Sandi','admin'=>'Panel Pengelolaan'
+];
 $title = $pageTitles[$page] ?? 'DESA MAKASARI';
 if ($page === 'dashboard' && ($viewer['role'] ?? '') === 'owner') $title = 'Dashboard Owner';
 elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $title = 'Dashboard Admin Desa';
@@ -545,39 +593,39 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#075b46">
-  <meta name="description" content="Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.">
-  <title><?= e($title) ?> · DESA MAKASARI</title>
-  <link rel="stylesheet" href="assets/style.css?v=1">
+  <meta name="description" content="<?= e(site_val('meta_description','Portal informasi dan pelayanan publik desa. Pengajuan layanan, pelacakan, berita, dan pengaduan warga.')) ?>">
+  <title><?= e($title) ?> · <?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></title>
+  <link rel="stylesheet" href="assets/style.css?v=2">
 </head>
 <body>
 <header class="site-header">
-  <a class="brand" href="<?= e(app_url('home')) ?>" aria-label="DESA MAKASARI - Beranda">
-    <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M5 31 27 4h9L14 36H5z" fill="#77b84a"/><path d="M31 4h5v14c0 10-7 18-18 18h-4z" fill="#07634e"/><path d="M5 31 27 4" stroke="#e8f4d7" stroke-width="1.3"/></svg></span>
-    <span><strong>DESA</strong> MAKASARI</span>
+  <a class="brand" href="<?= e(app_url('home')) ?>" aria-label="<?= e(site_val('village_brand_prefix','DESA').' '.site_val('village_name','MAKASARI').' - '.site_val('nav_home','Beranda')) ?>">
+    <span class="brand-mark" aria-hidden="true"><?php if(site_image_val('logo_image','')!==''): ?><img class="brand-logo-image" src="<?= e(site_image_val('logo_image','')) ?>" alt=""><?php else: ?><svg viewBox="0 0 40 40"><path d="M5 31 27 4h9L14 36H5z" fill="#77b84a"/><path d="M31 4h5v14c0 10-7 18-18 18h-4z" fill="#07634e"/><path d="M5 31 27 4" stroke="#e8f4d7" stroke-width="1.3"/></svg><?php endif; ?></span>
+    <span><strong><?= e(site_val('village_brand_prefix','DESA')) ?></strong> <?= e(site_val('village_name','MAKASARI')) ?></span>
   </a>
-  <nav class="main-nav" aria-label="Navigasi utama">
-    <a class="<?= $page==='home'?'active':'' ?>" href="<?= e(app_url('home')) ?>">Beranda</a>
-    <a class="<?= $page==='layanan'?'active':'' ?>" href="<?= e(app_url('layanan')) ?>">Layanan Desa</a>
-    <a class="<?= in_array($page,['berita','article'],true)?'active':'' ?>" href="<?= e(app_url('berita')) ?>">Berita & Pengumuman</a>
-    <a class="<?= $page==='pengaduan'?'active':'' ?>" href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a>
-    <a class="<?= $page==='profil'?'active':'' ?>" href="<?= e(app_url('profil')) ?>">Profil Desa</a>
+  <nav class="main-nav" aria-label="<?= e(site_val('nav_main_aria','Navigasi utama')) ?>">
+    <a class="<?= $page==='home'?'active':'' ?>" href="<?= e(app_url('home')) ?>"><?= e(site_val('nav_home','Beranda')) ?></a>
+    <a class="<?= $page==='layanan'?'active':'' ?>" href="<?= e(app_url('layanan')) ?>"><?= e(site_val('nav_services','Layanan Desa')) ?></a>
+    <a class="<?= in_array($page,['berita','article'],true)?'active':'' ?>" href="<?= e(app_url('berita')) ?>"><?= e(site_val('nav_news','Berita & Pengumuman')) ?></a>
+    <a class="<?= $page==='pengaduan'?'active':'' ?>" href="<?= e(app_url('pengaduan')) ?>"><?= e(site_val('nav_complaints','Pengaduan')) ?></a>
+    <a class="<?= $page==='profil'?'active':'' ?>" href="<?= e(app_url('profil')) ?>"><?= e(site_val('nav_profile','Profil Desa')) ?></a>
     <div class="nav-more">
-      <button class="nav-more-button" type="button" aria-expanded="false" aria-controls="nav-more-menu">Lainnya <span aria-hidden="true">⌄</span></button>
+      <button class="nav-more-button" type="button" aria-expanded="false" aria-controls="nav-more-menu"><?= e(site_val('nav_more','Lainnya')) ?> <span aria-hidden="true">⌄</span></button>
       <div class="nav-more-menu" id="nav-more-menu">
-        <a href="<?= e(app_url('umkm')) ?>">UMKM & Wisata</a>
-        <a href="<?= e(app_url('peta')) ?>">Peta Desa</a>
-        <a href="<?= e(app_url('transparansi')) ?>">Transparansi Anggaran</a>
-        <a href="<?= e(app_url('kontak')) ?>">Kontak</a>
+        <a href="<?= e(app_url('umkm')) ?>"><?= e(site_val('nav_umkm','UMKM & Wisata')) ?></a>
+        <a href="<?= e(app_url('peta')) ?>"><?= e(site_val('nav_map','Peta Desa')) ?></a>
+        <a href="<?= e(app_url('transparansi')) ?>"><?= e(site_val('nav_budget','Transparansi Anggaran')) ?></a>
+        <a href="<?= e(app_url('kontak')) ?>"><?= e(site_val('nav_contact','Kontak')) ?></a>
       </div>
     </div>
   </nav>
   <div class="header-actions">
-    <a class="icon-button search-link" href="<?= e(app_url('berita')) ?>" aria-label="Cari berita">⌕</a>
-    <button class="icon-button mobile-menu-toggle" type="button" aria-label="Buka menu tambahan" aria-expanded="false" aria-controls="mobile-drawer">☰</button>
+    <a class="icon-button search-link" href="<?= e(app_url('berita')) ?>" aria-label="<?= e(site_val('nav_search_aria','Cari berita')) ?>">⌕</a>
+    <button class="icon-button mobile-menu-toggle" type="button" aria-label="<?= e(site_val('nav_open_menu_aria','Buka menu tambahan')) ?>" data-open-label="<?= e(site_val('nav_open_menu_aria','Buka menu tambahan')) ?>" data-close-label="<?= e(site_val('nav_close_menu_aria','Tutup menu tambahan')) ?>" aria-expanded="false" aria-controls="mobile-drawer">☰</button>
     <?php if ($viewer): ?>
       <a class="login-button" href="<?= e(app_url('dashboard')) ?>">♙ <span><?= e($viewer['full_name']) ?></span></a>
     <?php else: ?>
-      <a class="login-button" href="<?= e(app_url('login')) ?>">♙ <span>Masuk</span></a>
+      <a class="login-button" href="<?= e(app_url('login')) ?>">♙ <span><?= e(site_val('nav_login','Masuk')) ?></span></a>
     <?php endif; ?>
   </div>
 </header>
@@ -593,101 +641,101 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
 <?php if ($page === 'home'): ?>
   <section class="hero">
     <div class="hero-copy">
-      <span class="eyebrow">Pelayanan Publik Desa</span>
+      <span class="eyebrow"><?= e(site_val('home_eyebrow','Pelayanan Publik Desa')) ?></span>
       <h1><?= e(site_val('hero_title_line1','Layanan desa,')) ?><br><?= e(site_val('hero_title_prefix','kini')) ?> <em><?= e(site_val('hero_title_highlight','lebih dekat')) ?></em></h1>
       <p class="hero-description"><?= e(site_val('hero_subtitle','Akses berbagai layanan surat, pengaduan, informasi, dan kabar desa dalam satu tempat, dengan mudah, cepat, dan transparan.')) ?></p>
       <div class="hero-actions">
-        <a class="button button-primary" href="<?= e(app_url('layanan')) ?>"><span class="button-icon">▤</span> Ajukan Surat <span class="arrow">→</span></a>
-        <a class="button button-outline" href="<?= e(app_url('track')) ?>"><span class="button-icon">⌕</span> Lacak Pengajuan <span class="arrow">→</span></a>
+        <a class="button button-primary" href="<?= e(app_url('layanan')) ?>"><span class="button-icon">▤</span> <?= e(site_val('hero_cta_apply','Ajukan Surat')) ?> <span class="arrow">→</span></a>
+        <a class="button button-outline" href="<?= e(app_url('track')) ?>"><span class="button-icon">⌕</span> <?= e(site_val('hero_cta_track','Lacak Pengajuan')) ?> <span class="arrow">→</span></a>
       </div>
       <div class="benefits">
-        <div><span class="benefit-icon">▣</span><span>Mudah<br>diakses</span></div>
-        <div><span class="benefit-icon">ϟ</span><span>Proses<br>lebih cepat</span></div>
-        <div><span class="benefit-icon">⬟</span><span>Transparan<br>dan terpercaya</span></div>
-        <div><span class="benefit-icon">♟</span><span>untuk<br>Seluruh Warga</span></div>
+        <div><span class="benefit-icon">▣</span><span><?= nl2br(e(site_val('benefit_easy','Mudah diakses'))) ?></span></div>
+        <div><span class="benefit-icon">ϟ</span><span><?= nl2br(e(site_val('benefit_fast','Proses lebih cepat'))) ?></span></div>
+        <div><span class="benefit-icon">⬟</span><span><?= nl2br(e(site_val('benefit_transparent','Transparan dan terpercaya'))) ?></span></div>
+        <div><span class="benefit-icon">♟</span><span><?= nl2br(e(site_val('benefit_all','Untuk seluruh warga'))) ?></span></div>
       </div>
     </div>
     <div class="hero-visual">
-      <img src="<?= e(site_val('hero_image','assets/village-hero.webp')) ?>" alt="<?= e(site_val('hero_image_alt','Pemandangan desa dan pegunungan')) ?>" style="object-position:<?= max(0,min(100,(int)site_val('hero_focus_x','50'))) ?>% <?= max(0,min(100,(int)site_val('hero_focus_y','50'))) ?>%">
+      <img src="<?= e(site_image_val('hero_image','assets/village-hero.webp')) ?>" alt="<?= e(site_val('hero_image_alt','Pemandangan desa dan pegunungan')) ?>" style="object-position:<?= max(0,min(100,(int)site_val('hero_focus_x','50'))) ?>% <?= max(0,min(100,(int)site_val('hero_focus_y','50'))) ?>%">
       <div class="welcome-card"><span class="weather-icon">☀</span><strong><?= e(site_val('welcome_title','Pagi yang baik, Warga Desa!')) ?></strong><p><?= e(site_val('welcome_text','Bersama membangun desa yang lebih maju dan sejahtera.')) ?></p></div>
       <div class="slider-dots"><span>‹</span><i></i><span>›</span></div>
     </div>
   </section>
 
-  <section class="service-strip" aria-label="Layanan utama">
-    <a class="service-card green-card" href="<?= e(app_url('layanan')) ?>"><span class="service-icon">▤</span><h2>Layanan Surat</h2><p>Ajukan berbagai surat keterangan dengan mudah dan cepat.</p><span class="round-arrow">→</span></a>
-    <a class="service-card amber-card" href="<?= e(app_url('pengaduan')) ?>"><span class="service-icon">⚑</span><h2>Pengaduan Warga</h2><p>Sampaikan aspirasi, keluhan, atau laporan Anda.</p><span class="round-arrow">→</span></a>
-    <a class="service-card blue-card" href="<?= e(app_url('profil')) ?>"><span class="service-icon">ⓘ</span><h2>Informasi Desa</h2><p>Akses informasi seputar program, kegiatan, dan data desa.</p><span class="round-arrow">→</span></a>
-    <div class="track-card"><div class="track-heading"><span class="track-icon">◷</span><div><h2>Cek Status Pengajuan</h2><p>Masukkan nomor pengajuan Anda</p></div></div>
-      <form method="get" action="index.php" class="track-form"><input type="hidden" name="page" value="track"><label class="sr-only" for="home-track">Kode pengajuan</label><input id="home-track" name="code" placeholder="Contoh: SR-260101-AB12CD34" required maxlength="32"><button type="submit" aria-label="Cek status">⌕</button></form>
+  <section class="service-strip" aria-label="<?= e(site_val('home_service_strip_aria','Layanan utama')) ?>">
+    <a class="service-card green-card" href="<?= e(app_url('layanan')) ?>"><span class="service-icon">▤</span><h2><?= e(site_val('service_card_service_title','Layanan Surat')) ?></h2><p><?= e(site_val('service_card_service_text','Ajukan berbagai surat keterangan dengan mudah dan cepat.')) ?></p><span class="round-arrow">→</span></a>
+    <a class="service-card amber-card" href="<?= e(app_url('pengaduan')) ?>"><span class="service-icon">⚑</span><h2><?= e(site_val('service_card_complaint_title','Pengaduan Warga')) ?></h2><p><?= e(site_val('service_card_complaint_text','Sampaikan aspirasi, keluhan, atau laporan Anda.')) ?></p><span class="round-arrow">→</span></a>
+    <a class="service-card blue-card" href="<?= e(app_url('profil')) ?>"><span class="service-icon">ⓘ</span><h2><?= e(site_val('service_card_info_title','Informasi Desa')) ?></h2><p><?= e(site_val('service_card_info_text','Akses informasi seputar program, kegiatan, dan data desa.')) ?></p><span class="round-arrow">→</span></a>
+    <div class="track-card"><div class="track-heading"><span class="track-icon">◷</span><div><h2><?= e(site_val('home_tracking_title','Cek Status Pengajuan')) ?></h2><p><?= e(site_val('home_tracking_subtitle','Masukkan nomor pengajuan Anda')) ?></p></div></div>
+      <form method="get" action="index.php" class="track-form"><input type="hidden" name="page" value="track"><label class="sr-only" for="home-track"><?= e(site_val('tracking_placeholder','Kode pengajuan')) ?></label><input id="home-track" name="code" placeholder="<?= e(site_val('tracking_placeholder','Contoh: SR-261017-0123456789ABCDEF0123456789ABCDEF')) ?>" required maxlength="48"><button type="submit" aria-label="<?= e(site_val('tracking_check_button','Cek status')) ?>">⌕</button></form>
     </div>
   </section>
 
   <section class="news-section">
-    <div class="section-heading"><div><h2>Berita & Pengumuman</h2><p>Informasi terbaru seputar kegiatan, program, dan perkembangan desa.</p></div><a href="<?= e(app_url('berita')) ?>" class="see-all">Lihat Semua <span>→</span></a></div>
+    <div class="section-heading"><div><h2><?= e(site_val('home_news_title','Berita & Pengumuman')) ?></h2><p><?= e(site_val('home_news_subtitle','Informasi terbaru seputar kegiatan, program, dan perkembangan desa.')) ?></p></div><a href="<?= e(app_url('berita')) ?>" class="see-all"><?= e(site_val('news_see_all','Lihat Semua')) ?> <span>→</span></a></div>
     <?php if ($news): ?>
       <div class="news-grid">
       <?php foreach (array_slice($news,0,3) as $item): ?>
         <article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>">
-          <?php if (!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="assets/village-hero.webp" alt="Ilustrasi desa"><?php endif; ?>
+          <?php if (!empty($item['image_key'])): ?><img src="<?= e(public_image_src($item['image_key'] ?? null,site_image_val('news_fallback_image','assets/village-hero.svg'))) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="<?= e(site_val('news_fallback_alt','Ilustrasi desa')) ?>"><?php endif; ?>
           <span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a>
-          <div class="news-content"><time><?= e(date('d M Y', strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><a class="news-arrow" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>" aria-label="Baca berita">→</a></div></article>
+          <div class="news-content"><time><?= e(date('d M Y', strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><a class="news-arrow" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>" aria-label="<?= e(site_val('news_read_label','Baca berita')) ?>">→</a></div></article>
       <?php endforeach; ?>
       </div>
     <?php else: ?>
-      <div class="empty-news"><span class="empty-news-icon">▤</span><div><strong>Berita desa akan tampil di sini.</strong><p>Petugas dapat menerbitkan berita dan pengumuman melalui panel pengelolaan.</p></div></div>
+      <div class="empty-news"><span class="empty-news-icon">▤</span><div><strong><?= e(site_val('home_no_news_title','Berita desa akan tampil di sini.')) ?></strong><p><?= e(site_val('home_no_news_text','Petugas dapat menerbitkan berita dan pengumuman melalui panel pengelolaan.')) ?></p></div></div>
     <?php endif; ?>
   </section>
-  <section class="stats-band" aria-label="Ringkasan data desa">
-    <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['residents'] === null ? '—' : number_format($stats['residents'],0,',','.') ?></strong><span>Jumlah Penduduk</span></div></div>
-    <div class="stat-item"><span class="stat-icon">⌂</span><div><strong><?= $stats['families'] === null ? '—' : number_format($stats['families'],0,',','.') ?></strong><span>Jumlah KK</span></div></div>
-    <div class="stat-item"><span class="stat-icon">▧</span><div><strong><?= e(site_val('stat_area','—')) ?></strong><span>Luas Wilayah</span></div></div>
-    <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['dusun'] === null ? '—' : number_format($stats['dusun'],0,',','.') ?></strong><span>Dusun</span></div></div>
+  <section class="stats-band" aria-label="<?= e(site_val('stats_aria_label','Ringkasan data desa')) ?>">
+    <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['residents'] === null ? '—' : number_format($stats['residents'],0,',','.') ?></strong><span><?= e(site_val('stat_residents_label','Jumlah Penduduk')) ?></span></div></div>
+    <div class="stat-item"><span class="stat-icon">⌂</span><div><strong><?= $stats['families'] === null ? '—' : number_format($stats['families'],0,',','.') ?></strong><span><?= e(site_val('stat_families_label','Jumlah KK')) ?></span></div></div>
+    <div class="stat-item"><span class="stat-icon">▧</span><div><strong><?= e(site_val('stat_area','—')) ?></strong><span><?= e(site_val('stat_area_label','Luas Wilayah')) ?></span></div></div>
+    <div class="stat-item"><span class="stat-icon">♧</span><div><strong><?= $stats['dusun'] === null ? '—' : number_format($stats['dusun'],0,',','.') ?></strong><span><?= e(site_val('stat_dusun_label','Dusun')) ?></span></div></div>
   </section>
 
 <?php elseif ($page === 'layanan'): ?>
-  <section class="page-hero"><span class="eyebrow">Pelayanan Publik</span><h1>Layanan Desa</h1><p>Pilih jenis layanan yang kamu butuhkan. Status pengajuan dapat dipantau dengan kode pelacakan.</p></section>
+  <section class="page-hero"><span class="eyebrow"><?= e(site_val('services_eyebrow','Pelayanan Publik')) ?></span><h1><?= e(site_val('services_title','Layanan Desa')) ?></h1><p><?= e(site_val('services_intro','Pilih jenis layanan yang kamu butuhkan. Status pengajuan dapat dipantau dengan kode pelacakan.')) ?></p></section>
   <div class="content-layout">
-    <section class="panel"><h2>Daftar layanan</h2>
-      <?php if ($services): ?><div class="list-cards"><?php foreach ($services as $service): ?><article class="list-card"><span class="service-icon">▤</span><div><h3><?= e($service['name']) ?></h3><p><?= e($service['description'] ?? '') ?></p><?php if (!empty($service['estimated_days'])): ?><small>Estimasi <?= (int)$service['estimated_days'] ?> hari kerja</small><?php endif; ?></div><?php if ($viewer && ($viewer['role'] ?? '')==='warga' && $dbAvailable && (int)$service['id']>0): ?><a class="button button-small button-primary" href="<?= e(app_url('layanan',['type'=>(int)$service['id']])) ?>">Ajukan</a><?php else: ?><a class="button button-small button-outline" href="<?= e(app_url($viewer?'login':'login')) ?>">Masuk untuk ajukan</a><?php endif; ?></article><?php endforeach; ?></div><?php else: ?><p>Belum ada layanan yang diterbitkan.</p><?php endif; ?>
+    <section class="panel"><h2><?= e(site_val('services_list_title','Daftar layanan')) ?></h2>
+      <?php if ($services): ?><div class="list-cards"><?php foreach ($services as $service): ?><article class="list-card"><span class="service-icon">▤</span><div><h3><?= e($service['name']) ?></h3><p><?= e($service['description'] ?? '') ?></p><?php if (!empty($service['estimated_days'])): ?><small><?= e(site_val('services_eta_prefix','Estimasi')) ?> <?= (int)$service['estimated_days'] ?> <?= e(site_val('services_eta_suffix','hari kerja')) ?></small><?php endif; ?></div><?php if ($viewer && ($viewer['role'] ?? '')==='warga' && $dbAvailable && (int)$service['id']>0): ?><a class="button button-small button-primary" href="<?= e(app_url('layanan',['type'=>(int)$service['id']])) ?>"><?= e(site_val('services_apply_button','Ajukan')) ?></a><?php else: ?><a class="button button-small button-outline" href="<?= e(app_url('login')) ?>"><?= e(site_val('services_login_for_apply','Masuk untuk ajukan')) ?></a><?php endif; ?></article><?php endforeach; ?></div><?php else: ?><p><?= e(site_val('services_empty_text','Belum ada layanan yang diterbitkan.')) ?></p><?php endif; ?>
     </section>
     <?php if ($viewer && ($viewer['role'] ?? '')==='warga' && $page==='layanan' && isset($_GET['type'])): ?>
       <?php $typeId=(int)$_GET['type']; $selected=null; foreach($services as $sv){if((int)$sv['id']===$typeId)$selected=$sv;} ?>
-      <?php if($selected): ?><section class="panel"><h2>Formulir pengajuan</h2><form method="post" enctype="multipart/form-data" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="apply_service"><input type="hidden" name="service_type_id" value="<?= (int)$selected['id'] ?>"><label>Jenis layanan<input value="<?= e($selected['name']) ?>" disabled></label><label>Keperluan / subjek<input name="subject" maxlength="190" required></label><label>Keterangan tambahan<textarea name="details" rows="4" maxlength="4000"></textarea></label><label>Lampiran persyaratan (opsional, maksimal 5 file)<input type="file" name="attachments[]" accept="application/pdf,image/jpeg,image/png,image/webp" multiple><small>PDF/JPG/PNG/WebP, maksimal 5 MB per file.</small></label><button class="button button-primary" type="submit">Kirim pengajuan →</button></form></section><?php endif; ?>
+      <?php if($selected): ?><section class="panel"><h2><?= e(site_val('service_apply_form_title','Formulir pengajuan')) ?></h2><form method="post" enctype="multipart/form-data" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="apply_service"><input type="hidden" name="service_type_id" value="<?= (int)$selected['id'] ?>"><label><?= e(site_val('service_apply_type_label','Jenis layanan')) ?><input value="<?= e($selected['name']) ?>" disabled></label><label><?= e(site_val('service_apply_subject_label','Keperluan / subjek')) ?><input name="subject" maxlength="190" required></label><label><?= e(site_val('service_apply_details_label','Keterangan tambahan')) ?><textarea name="details" rows="4" maxlength="4000"></textarea></label><label><?= e(site_val('service_apply_attachments_label','Lampiran persyaratan (opsional, maksimal 5 file)')) ?><input type="file" name="attachments[]" accept="application/pdf,image/jpeg,image/png,image/webp" multiple><small><?= e(site_val('service_apply_attachment_hint','PDF/JPG/PNG/WebP, maksimal 5 MB per file.')) ?></small></label><button class="button button-primary" type="submit"><?= e(site_val('service_apply_submit_button','Kirim pengajuan →')) ?></button></form></section><?php endif; ?>
     <?php endif; ?>
   </div>
 
 <?php elseif ($page === 'pengaduan'): ?>
-  <section class="page-hero"><span class="eyebrow">Suara Warga</span><h1>Pengaduan Warga</h1><p>Sampaikan aspirasi, keluhan, atau laporan. Data pelapor hanya terlihat oleh pihak yang berwenang.</p></section>
-  <section class="panel narrow-panel"><h2>Kirim pengaduan</h2>
-    <?php if (!$viewer): ?><p>Silakan <a class="text-link" href="<?= e(app_url('login')) ?>">masuk ke akun warga</a> untuk mengirim pengaduan dan melacak tindak lanjutnya.</p>
-    <?php elseif (($viewer['role'] ?? '')!=='warga'): ?><p>Akun ini tidak memiliki akses untuk mengirim pengaduan sebagai warga.</p>
-    <?php else: ?><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="submit_complaint"><label>Judul laporan<input name="title" required maxlength="190"></label><label>Kategori<select name="category"><option value="umum">Umum</option><option value="infrastruktur">Infrastruktur</option><option value="pelayanan">Pelayanan</option><option value="lingkungan">Lingkungan</option><option value="sosial">Sosial</option></select></label><label>Detail laporan<textarea name="description" rows="6" maxlength="5000" required></textarea></label><button class="button button-primary" type="submit">Kirim pengaduan →</button></form><?php endif; ?>
+  <section class="page-hero"><span class="eyebrow"><?= e(site_val('complaints_eyebrow','Suara Warga')) ?></span><h1><?= e(site_val('service_card_complaint_title','Pengaduan Warga')) ?></h1><p><?= e(site_val('complaints_intro','Sampaikan aspirasi, keluhan, atau laporan. Data pelapor hanya terlihat oleh pihak yang berwenang.')) ?></p></section>
+  <section class="panel narrow-panel"><h2><?= e(site_val('complaints_form_title','Kirim pengaduan')) ?></h2>
+    <?php if (!$viewer): ?><p><?= e(site_val('complaints_login_text','Silakan masuk ke akun warga untuk mengirim pengaduan dan melacak tindak lanjutnya.')) ?> <a class="text-link" href="<?= e(app_url('login')) ?>"><?= e(site_val('nav_login','Masuk')) ?></a></p>
+    <?php elseif (($viewer['role'] ?? '')!=='warga'): ?><p><?= e(site_val('complaints_wrong_role_text','Akun ini tidak memiliki akses untuk mengirim pengaduan sebagai warga.')) ?></p>
+    <?php else: ?><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="submit_complaint"><label><?= e(site_val('complaints_title_label','Judul laporan')) ?><input name="title" required maxlength="190"></label><label><?= e(site_val('complaints_category_label','Kategori')) ?><select name="category"><option value="umum"><?= e(site_val('complaint_category_umum','Umum')) ?></option><option value="infrastruktur"><?= e(site_val('complaint_category_infrastruktur','Infrastruktur')) ?></option><option value="pelayanan"><?= e(site_val('complaint_category_pelayanan','Pelayanan')) ?></option><option value="lingkungan"><?= e(site_val('complaint_category_lingkungan','Lingkungan')) ?></option><option value="sosial"><?= e(site_val('complaint_category_sosial','Sosial')) ?></option></select></label><label><?= e(site_val('complaints_detail_label','Detail laporan')) ?><textarea name="description" rows="6" maxlength="5000" required></textarea></label><button class="button button-primary" type="submit"><?= e(site_val('complaints_submit_label','Kirim pengaduan →')) ?></button></form><?php endif; ?>
   </section>
 
 <?php elseif ($page === 'track'): ?>
-  <section class="page-hero"><span class="eyebrow">Transparan & Terpantau</span><h1>Lacak Pengajuan</h1><p>Masukkan kode pelacakan untuk melihat status dan pembaruan yang boleh dibagikan kepada publik.</p></section>
-  <section class="panel narrow-panel"><form method="get" class="track-form large-track"><input type="hidden" name="page" value="track"><label class="sr-only" for="track-code">Kode pelacakan</label><input id="track-code" name="code" placeholder="Contoh: SR-260101-AB12CD34" required maxlength="32" value="<?= e((string)($_GET['code'] ?? '')) ?>"><button type="submit">Periksa</button></form>
-  <?php if (isset($_GET['code'])): ?><?php if ($tracking): ?><div class="tracking-result"><span class="status-pill <?= e(status_class($tracking['status'])) ?>"><?= e(status_text($tracking['status'])) ?></span><h2><?= e($tracking['title']) ?></h2><p class="muted">Kode: <strong><?= e($tracking['tracking_code']) ?></strong></p><p><?= e($tracking['public_note'] ?: 'Belum ada catatan pembaruan untuk ditampilkan.') ?></p><dl class="detail-list"><div><dt>Dikirim</dt><dd><?= e(date('d M Y H:i',strtotime($tracking['created_at']))) ?></dd></div><div><dt>Pembaruan terakhir</dt><dd><?= e(date('d M Y H:i',strtotime($tracking['updated_at']))) ?></dd></div></dl></div><?php else: ?><p class="flash error inline-flash">Kode tidak ditemukan. Periksa kembali kode pada bukti pengajuan.</p><?php endif; ?><?php endif; ?>
+  <section class="page-hero"><span class="eyebrow"><?= e(site_val('tracking_eyebrow','Transparan & Terpantau')) ?></span><h1><?= e(site_val('tracking_title','Lacak Pengajuan')) ?></h1><p><?= e(site_val('tracking_intro','Masukkan kode pelacakan untuk melihat status dan pembaruan yang boleh dibagikan kepada publik.')) ?></p></section>
+  <section class="panel narrow-panel"><form method="get" class="track-form large-track"><input type="hidden" name="page" value="track"><label class="sr-only" for="track-code"><?= e(site_val('tracking_placeholder','Kode pelacakan')) ?></label><input id="track-code" name="code" placeholder="<?= e(site_val('tracking_placeholder','Contoh: SR-261017-0123456789ABCDEF0123456789ABCDEF')) ?>" required maxlength="48" value="<?= e((string)($_GET['code'] ?? '')) ?>"><button type="submit"><?= e(site_val('tracking_check_button','Periksa')) ?></button></form>
+  <?php if (isset($_GET['code'])): ?><?php if ($tracking): ?><div class="tracking-result"><span class="status-pill <?= e(status_class($tracking['status'])) ?>"><?= e(status_text($tracking['status'])) ?></span><h2><?= e($tracking['title']) ?></h2><p class="muted"><?= e(site_val('tracking_code_label','Kode')) ?>: <strong><?= e($tracking['tracking_code']) ?></strong></p><p><?= e($tracking['public_note'] ?: site_val('tracking_public_note_fallback','Belum ada catatan pembaruan untuk ditampilkan.')) ?></p><dl class="detail-list"><div><dt><?= e(site_val('tracking_sent_label','Dikirim')) ?></dt><dd><?= e(date('d M Y H:i',strtotime($tracking['created_at']))) ?></dd></div><div><dt><?= e(site_val('tracking_last_update_label','Pembaruan terakhir')) ?></dt><dd><?= e(date('d M Y H:i',strtotime($tracking['updated_at']))) ?></dd></div></dl></div><?php else: ?><p class="flash error inline-flash"><?= e(site_val('tracking_not_found','Kode tidak ditemukan. Periksa kembali kode pada bukti pengajuan.')) ?></p><?php endif; ?><?php endif; ?>
   </section>
 
 <?php elseif ($page === 'berita'): ?>
-  <section class="page-hero"><span class="eyebrow">Kabar Desa</span><h1>Berita & Pengumuman</h1><p>Informasi kegiatan, program, dan pengumuman resmi desa.</p></section>
-  <?php if ($news): ?><div class="news-grid news-grid-wide"><?php foreach($news as $item): ?><article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?php if(!empty($item['image_key'])): ?><img src="<?= e($item['image_key']) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="assets/village-hero.webp" alt="Ilustrasi desa"><?php endif; ?><span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a><div class="news-content"><time><?= e(date('d M Y',strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><p><?= e($item['excerpt'] ?? '') ?></p></div></article><?php endforeach; ?></div><?php else: ?><div class="empty-news"><div><strong>Belum ada berita yang diterbitkan.</strong><p>Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.</p></div></div><?php endif; ?>
+  <section class="page-hero"><span class="eyebrow"><?= e(site_val('news_eyebrow','Kabar Desa')) ?></span><h1><?= e(site_val('news_title','Berita & Pengumuman')) ?></h1><p><?= e(site_val('news_intro','Informasi kegiatan, program, dan pengumuman resmi desa.')) ?></p></section>
+  <?php if ($news): ?><div class="news-grid news-grid-wide"><?php foreach($news as $item): ?><article class="news-card"><a class="news-image" href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?php if(!empty($item['image_key'])): ?><img src="<?= e(public_image_src($item['image_key'] ?? null,site_image_val('news_fallback_image','assets/village-hero.svg'))) ?>" alt="<?= e($item['alt_text'] ?: $item['title']) ?>"><?php else: ?><img src="<?= e(site_image_val('news_fallback_image','assets/village-hero.svg')) ?>" alt="<?= e(site_val('news_fallback_alt','Ilustrasi desa')) ?>"><?php endif; ?><span class="news-tag"><?= e(strtoupper($item['category'])) ?></span></a><div class="news-content"><time><?= e(date('d M Y',strtotime($item['publish_at'] ?: $item['created_at']))) ?></time><h3><a href="<?= e(app_url('article',['slug'=>$item['slug']])) ?>"><?= e($item['title']) ?></a></h3><p><?= e($item['excerpt'] ?? '') ?></p></div></article><?php endforeach; ?></div><?php else: ?><div class="empty-news"><div><strong><?= e(site_val('news_empty_title','Belum ada berita yang diterbitkan.')) ?></strong><p><?= e(site_val('news_empty_text','Konten akan tampil setelah disetujui dan diterbitkan oleh petugas.')) ?></p></div></div><?php endif; ?>
 
 <?php elseif ($page === 'article'): ?>
-  <?php if (!$article): ?><section class="page-hero"><h1>Berita tidak ditemukan</h1><p>Berita mungkin sudah diarsipkan atau alamatnya salah.</p><a class="button button-primary" href="<?= e(app_url('berita')) ?>">Kembali ke berita</a></section>
-  <?php else: ?><article class="article-page"><?php if(!empty($article['image_key'])): ?><img class="article-cover" src="<?= e($article['image_key']) ?>" alt="<?= e($article['alt_text'] ?: $article['title']) ?>"><?php endif; ?><span class="eyebrow"><?= e(strtoupper($article['category'])) ?></span><h1><?= e($article['title']) ?></h1><p class="muted"><?= e(date('d M Y',strtotime($article['publish_at'] ?: $article['created_at']))) ?></p><?php if($article['excerpt']): ?><p class="article-excerpt"><?= e($article['excerpt']) ?></p><?php endif; ?><div class="article-body"><?= nl2br(e($article['body'])) ?></div><a class="text-link" href="<?= e(app_url('berita')) ?>">← Kembali ke berita</a></article><?php endif; ?>
+  <?php if (!$article): ?><section class="page-hero"><h1><?= e(site_val('article_notfound_title','Berita tidak ditemukan')) ?></h1><p><?= e(site_val('article_notfound_intro','Berita mungkin sudah diarsipkan atau alamatnya salah.')) ?></p><a class="button button-primary" href="<?= e(app_url('berita')) ?>"><?= e(site_val('article_back_label','Kembali ke berita')) ?></a></section>
+  <?php else: ?><article class="article-page"><?php if(!empty($article['image_key'])): ?><img class="article-cover" src="<?= e(public_image_src($article['image_key'] ?? null,site_image_val('news_fallback_image','assets/village-hero.svg'))) ?>" alt="<?= e($article['alt_text'] ?: $article['title']) ?>"><?php endif; ?><span class="eyebrow"><?= e(strtoupper($article['category'])) ?></span><h1><?= e($article['title']) ?></h1><p class="muted"><?= e(date('d M Y',strtotime($article['publish_at'] ?: $article['created_at']))) ?></p><?php if($article['excerpt']): ?><p class="article-excerpt"><?= e($article['excerpt']) ?></p><?php endif; ?><div class="article-body"><?= nl2br(e($article['body'])) ?></div><a class="text-link" href="<?= e(app_url('berita')) ?>"><?= e(site_val('article_body_back_label','← Kembali ke berita')) ?></a></article><?php endif; ?>
 
 <?php elseif ($page === 'profil'): ?>
-  <section class="page-hero"><span class="eyebrow">Tentang Kami</span><h1>Profil Desa</h1><p>Ruang informasi resmi desa. Identitas, sejarah, struktur pemerintahan, potensi, alamat, dan kontak akan dikelola melalui panel admin.</p></section>
-  <section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2>Profil & sejarah</h2><p><?= e(site_val('profil_sejarah','Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.')) ?></p></div><div class="panel"><span class="profile-icon">♧</span><h2>Potensi desa</h2><p><?= e(site_val('profil_potensi','UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.')) ?></p></div><div class="panel"><span class="profile-icon">✉</span><h2>Kontak kantor</h2><p>Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.</p></div></section>
+  <section class="page-hero"><span class="eyebrow"><?= e(site_val('profile_eyebrow','Tentang Kami')) ?></span><h1><?= e(site_val('profile_title','Profil Desa')) ?></h1><p><?= e(site_val('profile_intro','Ruang informasi resmi desa. Identitas, sejarah, struktur pemerintahan, potensi, alamat, dan kontak akan dikelola melalui panel admin.')) ?></p></section>
+  <section class="profile-grid"><div class="panel"><span class="profile-icon">⌂</span><h2><?= e(site_val('profile_history_title','Profil & sejarah')) ?></h2><p><?= e(site_val('profil_sejarah',site_val('profile_history_fallback','Informasi profil desa dapat diperbarui oleh admin desa setelah data resmi tersedia.'))) ?></p></div><div class="panel"><span class="profile-icon">♧</span><h2><?= e(site_val('profile_potential_title','Potensi desa')) ?></h2><p><?= e(site_val('profil_potensi',site_val('profile_potential_fallback','UMKM, wisata, kegiatan masyarakat, dan program unggulan akan ditampilkan setelah konten diterbitkan.'))) ?></p></div><div class="panel"><span class="profile-icon">✉</span><h2><?= e(site_val('profile_contact_title','Kontak kantor')) ?></h2><p><?= e(site_val('profile_contact_text','Alamat dan nomor layanan resmi perlu diisi melalui pengaturan website.')) ?></p></div></section>
 
 <?php elseif ($page === 'login'): ?>
-  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Selamat datang kembali</span><h1>Masuk ke<br><em>DESA MAKASARI</em></h1><p>Akses layanan warga atau panel kerja sesuai peran akun kamu.</p><img src="assets/village-hero.webp" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Masuk</h2><p class="muted">Gunakan username dan kata sandi yang terdaftar.</p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label>Username<input name="username" autocomplete="username" required maxlength="80"></label><label>Kata sandi<input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit">Masuk →</button></form><p class="auth-foot">Belum punya akun warga? <a href="<?= e(app_url('register')) ?>">Daftar di sini</a></p></div></section>
+  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow"><?= e(site_val('login_eyebrow','Selamat datang kembali')) ?></span><h1><?= e(site_val('login_title_prefix','Masuk ke')) ?><br><em><?= e(site_val('login_title_highlight','DESA MAKASARI')) ?></em></h1><p><?= e(site_val('login_intro','Akses layanan warga atau panel kerja sesuai peran akun kamu.')) ?></p><img src="<?= e(site_image_val('login_image','assets/village-hero.webp')) ?>" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2><?= e(site_val('login_form_title','Masuk')) ?></h2><p class="muted"><?= e(site_val('login_instructions','Gunakan username dan kata sandi yang terdaftar.')) ?></p><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="login"><label><?= e(site_val('login_username_label','Username')) ?><input name="username" autocomplete="username" required maxlength="80"></label><label><?= e(site_val('login_password_label','Kata sandi')) ?><input type="password" name="password" autocomplete="current-password" required></label><button class="button button-primary button-full" type="submit"><?= e(site_val('login_submit_label','Masuk →')) ?></button></form><p class="auth-foot"><?= e(site_val('login_register_prompt','Belum punya akun warga?')) ?> <a href="<?= e(app_url('register')) ?>"><?= e(site_val('register_link_label','Daftar di sini')) ?></a></p></div></section>
 
 <?php elseif ($page === 'register'): ?>
-  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow">Akun warga</span><h1>Layanan desa,<br><em>lebih dekat.</em></h1><p>Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.</p><img src="assets/village-hero.webp" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2>Daftar akun warga</h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="register"><label>Nama lengkap<input name="full_name" autocomplete="name" required maxlength="160"></label><label>Username<input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{4,80}" required minlength="4" maxlength="80"></label><label>Email (opsional)<input type="email" name="email" autocomplete="email" maxlength="190"></label><label>Kata sandi<input type="password" name="password" autocomplete="new-password" required minlength="12"><small>Minimal 12 karakter.</small></label><button class="button button-primary button-full" type="submit">Buat akun →</button></form><p class="auth-foot">Sudah punya akun? <a href="<?= e(app_url('login')) ?>">Masuk</a></p></div></section>
+  <section class="auth-shell"><div class="auth-intro"><span class="eyebrow"><?= e(site_val('register_eyebrow','Akun warga')) ?></span><h1><?= e(site_val('register_title_prefix','Layanan desa,')) ?><br><em><?= e(site_val('register_title_highlight','lebih dekat.')) ?></em></h1><p><?= e(site_val('register_intro','Buat akun untuk mengajukan layanan dan melacak status permohonan milikmu.')) ?></p><img src="<?= e(site_image_val('register_image','assets/village-hero.webp')) ?>" alt="" aria-hidden="true"></div><div class="panel auth-panel"><h2><?= e(site_val('register_form_title','Daftar akun warga')) ?></h2><form method="post" class="form-stack"><?= csrf_field() ?><input type="hidden" name="action" value="register"><label><?= e(site_val('register_name_label','Nama lengkap')) ?><input name="full_name" autocomplete="name" required maxlength="160"></label><label><?= e(site_val('register_username_label','Username')) ?><input name="username" autocomplete="username" pattern="[A-Za-z0-9._-]{4,80}" required minlength="4" maxlength="80"></label><label><?= e(site_val('register_email_label','Email (opsional)')) ?><input type="email" name="email" autocomplete="email" maxlength="190"><small><?= e(site_val('register_email_hint','Tidak wajib diisi.')) ?></small></label><label><?= e(site_val('register_password_label','Kata sandi')) ?><input type="password" name="password" autocomplete="new-password" required minlength="12"><small><?= e(site_val('register_password_hint','Minimal 12 karakter.')) ?></small></label><button class="button button-primary button-full" type="submit"><?= e(site_val('register_submit_label','Buat akun →')) ?></button></form><p class="auth-foot"><?= e(site_val('register_login_prompt','Sudah punya akun?')) ?> <a href="<?= e(app_url('login')) ?>"><?= e(site_val('login_link_label','Masuk')) ?></a></p></div></section>
 
 <?php elseif ($page === 'change-password'): ?>
   <?php if (!$viewer): ?><section class="page-hero"><h1>Masuk diperlukan</h1><p>Masuk dulu untuk mengganti kata sandi.</p><a class="button button-primary" href="<?= e(app_url('login')) ?>">Masuk</a></section>
@@ -764,16 +812,16 @@ elseif ($page === 'dashboard' && ($viewer['role'] ?? '') === 'admin_desa') $titl
 <?php elseif (in_array($page, ['rt-data','rw-rekap','dokumen','perubahan','admin-users','admin-wilayah','admin-site','admin-services','admin-directory','admin-budget','admin-resident-export','laporan','notifikasi','umkm','peta','transparansi','kontak'], true)): ?>
   <?php require __DIR__ . '/app/module_views.php'; ?>
 <?php else: ?>
-  <section class="page-hero"><span class="eyebrow">DESA MAKASARI</span><h1>Halaman tidak ditemukan</h1><p>Alamat yang kamu buka tidak tersedia.</p><a class="button button-primary" href="<?= e(app_url('home')) ?>">Kembali ke beranda</a></section>
+  <section class="page-hero"><span class="eyebrow"><?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></span><h1><?= e(site_val('page_unavailable_title','Halaman tidak ditemukan')) ?></h1><p><?= e(site_val('page_unavailable_text','Alamat yang kamu buka tidak tersedia.')) ?></p><a class="button button-primary" href="<?= e(app_url('home')) ?>"><?= e(site_val('page_home_button','Kembali ke beranda')) ?></a></section>
 <?php endif; ?>
 </main>
 
-<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true">◆</span><span><strong>DESA</strong> MAKASARI</span></a><p>Layanan desa, kini lebih dekat.<br>Informasi publik dan pelayanan warga dalam satu tempat.</p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('layanan')) ?>">Layanan Surat</a><a href="<?= e(app_url('pengaduan')) ?>">Pengaduan</a><a href="<?= e(app_url('track')) ?>">Lacak Pengajuan</a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> DESA MAKASARI</span><span>Pelayanan publik yang mudah, cepat, dan transparan.</span></div></footer>
+<footer class="site-footer"><div class="footer-main"><a class="brand footer-brand" href="<?= e(app_url('home')) ?>"><span class="brand-mark" aria-hidden="true"><?php if(site_image_val('logo_image','')!==''): ?><img class="brand-logo-image" src="<?= e(site_image_val('logo_image','')) ?>" alt=""><?php else: ?>◆<?php endif; ?></span><span><strong><?= e(site_val('village_brand_prefix','DESA')) ?></strong> <?= e(site_val('village_name','MAKASARI')) ?></span></a><p><?= nl2br(e(site_val('footer_summary','Layanan desa, kini lebih dekat.'))) ?><br><?= e(site_val('footer_tagline','Informasi publik dan pelayanan warga dalam satu tempat.')) ?></p><nav aria-label="Navigasi footer"><a href="<?= e(app_url('profil')) ?>"><?= e(site_val('nav_profile','Profil Desa')) ?></a><a href="<?= e(app_url('layanan')) ?>"><?= e(site_val('nav_services','Layanan Surat')) ?></a><a href="<?= e(app_url('pengaduan')) ?>"><?= e(site_val('nav_complaints','Pengaduan')) ?></a><a href="<?= e(app_url('track')) ?>"><?= e(site_val('tracking_title','Lacak Pengajuan')) ?></a></nav></div><div class="footer-bottom"><span>© <?= date('Y') ?> <?= e(site_val('village_brand_prefix','DESA')) ?> <?= e(site_val('village_name','MAKASARI')) ?></span><span><?= e(site_val('footer_services','Pelayanan publik yang mudah, cepat, dan transparan.')) ?></span></div></footer>
 
-<nav class="mobile-drawer" id="mobile-drawer" hidden aria-label="Menu tambahan">
-  <a href="<?= e(app_url('profil')) ?>">Profil Desa</a><a href="<?= e(app_url('umkm')) ?>">UMKM & Wisata</a><a href="<?= e(app_url('peta')) ?>">Peta Desa</a><a href="<?= e(app_url('transparansi')) ?>">Transparansi Anggaran</a><a href="<?= e(app_url('kontak')) ?>">Kontak</a>
+<nav class="mobile-drawer" id="mobile-drawer" hidden aria-label="<?= e(site_val('nav_mobile_drawer_aria','Menu tambahan')) ?>">
+  <a href="<?= e(app_url('profil')) ?>"><?= e(site_val('nav_profile','Profil Desa')) ?></a><a href="<?= e(app_url('umkm')) ?>"><?= e(site_val('nav_umkm','UMKM & Wisata')) ?></a><a href="<?= e(app_url('peta')) ?>"><?= e(site_val('nav_map','Peta Desa')) ?></a><a href="<?= e(app_url('transparansi')) ?>"><?= e(site_val('nav_budget','Transparansi Anggaran')) ?></a><a href="<?= e(app_url('kontak')) ?>"><?= e(site_val('nav_contact','Kontak')) ?></a>
 </nav>
-<?php if ($viewer): ?><nav class="mobile-bottom-nav" aria-label="Navigasi mobile"><a href="<?= e(app_url('home')) ?>"><span>⌂</span>Beranda</a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span>Layanan</a><a href="<?= e(app_url('berita')) ?>"><span>▦</span>Berita</a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span>Pengaduan</a><a href="<?= e(app_url('dashboard')) ?>"><span>♙</span>Profil</a></nav><?php else: ?><nav class="mobile-bottom-nav" aria-label="Navigasi mobile"><a href="<?= e(app_url('home')) ?>"><span>⌂</span>Beranda</a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span>Layanan</a><a href="<?= e(app_url('berita')) ?>"><span>▦</span>Berita</a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span>Pengaduan</a><a href="<?= e(app_url('login')) ?>"><span>♙</span>Masuk</a></nav><?php endif; ?>
+<?php if ($viewer): ?><nav class="mobile-bottom-nav" aria-label="<?= e(site_val('mobile_nav_aria','Navigasi mobile')) ?>"><a href="<?= e(app_url('home')) ?>"><span>⌂</span><?= e(site_val('mobile_nav_home','Beranda')) ?></a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span><?= e(site_val('mobile_nav_services','Layanan')) ?></a><a href="<?= e(app_url('berita')) ?>"><span>▦</span><?= e(site_val('mobile_nav_news','Berita')) ?></a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span><?= e(site_val('mobile_nav_complaints','Pengaduan')) ?></a><a href="<?= e(app_url('dashboard')) ?>"><span>♙</span><?= e(site_val('mobile_nav_profile','Profil')) ?></a></nav><?php else: ?><nav class="mobile-bottom-nav" aria-label="<?= e(site_val('mobile_nav_aria','Navigasi mobile')) ?>"><a href="<?= e(app_url('home')) ?>"><span>⌂</span><?= e(site_val('mobile_nav_home','Beranda')) ?></a><a href="<?= e(app_url('layanan')) ?>"><span>▤</span><?= e(site_val('mobile_nav_services','Layanan')) ?></a><a href="<?= e(app_url('berita')) ?>"><span>▦</span><?= e(site_val('mobile_nav_news','Berita')) ?></a><a href="<?= e(app_url('pengaduan')) ?>"><span>⚑</span><?= e(site_val('mobile_nav_complaints','Pengaduan')) ?></a><a href="<?= e(app_url('login')) ?>"><span>♙</span><?= e(site_val('mobile_nav_login','Masuk')) ?></a></nav><?php endif; ?>
 
 <script src="assets/app.js" defer></script>
 </body>

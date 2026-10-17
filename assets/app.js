@@ -45,7 +45,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (opening) mobileDrawer.removeAttribute('hidden');
       else mobileDrawer.setAttribute('hidden', '');
       navToggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
-      navToggle.setAttribute('aria-label', opening ? 'Tutup menu tambahan' : 'Buka menu tambahan');
+      navToggle.setAttribute('aria-label', opening
+        ? (navToggle.getAttribute('data-close-label') || 'Tutup menu tambahan')
+        : (navToggle.getAttribute('data-open-label') || 'Buka menu tambahan'));
     });
     document.addEventListener('click', (event) => {
       if (!mobileDrawer.contains(event.target) && !navToggle.contains(event.target)) {
@@ -93,19 +95,42 @@ document.addEventListener('DOMContentLoaded', () => {
   focusInputs.forEach((input) => input.addEventListener('input', updateHeroFocus));
   updateHeroFocus();
 
-  const heroImageInput = document.getElementById('hero-image-input');
-  let heroPreviewUrl = null;
-  if (heroImageInput) {
-    heroImageInput.addEventListener('change', () => {
-      const file = heroImageInput.files && heroImageInput.files[0];
-      if (!file) return;
-      if (heroPreviewUrl) URL.revokeObjectURL(heroPreviewUrl);
-      heroPreviewUrl = URL.createObjectURL(file);
-      document.querySelectorAll('[data-preview-hero-image]').forEach((img) => {
-        img.src = heroPreviewUrl;
+  // Keep the large public-copy editor practical: filter settings by their label/key.
+  const siteSettingFilter = document.querySelector('[data-site-setting-filter]');
+  if (siteSettingFilter) {
+    const settingElements = Array.from(document.querySelectorAll('[data-site-setting]'));
+    const sectionHeadings = Array.from(document.querySelectorAll('#site-content-form .cms-subheading'));
+    const countElement = document.getElementById('site-setting-filter-count');
+    const filterSettings = () => {
+      const query = siteSettingFilter.value.trim().toLocaleLowerCase();
+      let visible = 0;
+      settingElements.forEach((element) => {
+        const haystack = ((element.getAttribute('data-setting-key') || '') + ' ' + (element.textContent || '')).toLocaleLowerCase();
+        const shown = query === '' || haystack.includes(query);
+        element.hidden = !shown;
+        const preview = element.nextElementSibling;
+        if (preview && preview.classList.contains('cms-image-preview')) preview.hidden = !shown;
+        if (shown) visible++;
       });
-    });
+      sectionHeadings.forEach((heading) => { heading.hidden = query !== ''; });
+      if (countElement) countElement.textContent = query === '' ? 'Semua pengaturan ditampilkan.' : visible + ' pengaturan cocok.';
+    };
+    siteSettingFilter.addEventListener('input', filterSettings);
   }
+
+  // Preview each replacement image before it is uploaded.
+  const imagePreviewUrls=new Map();
+  document.querySelectorAll('[data-preview-image-key]').forEach((input)=>{
+    input.addEventListener('change',()=>{
+      const file=input.files&&input.files[0],key=input.getAttribute('data-preview-image-key');
+      if(!file||!key||!file.type.startsWith('image/'))return;
+      const oldUrl=imagePreviewUrls.get(key);if(oldUrl)URL.revokeObjectURL(oldUrl);
+      const url=URL.createObjectURL(file);imagePreviewUrls.set(key,url);
+      document.querySelectorAll('[data-preview-site-image="'+key+'"]').forEach((img)=>{img.src=url;img.hidden=false;});
+      if(key==='hero_image')document.querySelectorAll('[data-preview-hero-image]').forEach((img)=>{img.src=url;});
+    });
+  });
+  document.querySelectorAll('[data-preview-site-image]').forEach((img)=>img.addEventListener('error',()=>{img.hidden=true;}));
 
   // Preview text uses textContent to avoid injecting HTML.
   document.querySelectorAll('[data-preview-key]').forEach((input) => {
