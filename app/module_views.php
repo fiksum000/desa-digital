@@ -239,15 +239,26 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         if($role==='rt') {$where=' WHERE d.rt_id=?';$params[]=(int)$mvUser['rt_id'];}
         $status=trim((string)($_GET['status'] ?? ''));
         $type=trim((string)($_GET['type'] ?? ''));
+        $documentSearch=trim((string)($_GET['q'] ?? ''));
         if($status!=='' && in_array($status,['pending','approved','revision_requested','rejected','archived'],true)) {$where.=($where?' AND ':' WHERE ').'d.status=?';$params[]=$status;}
         if($type!=='' && in_array($type,['ktp','kk','akta','surat_pendukung','lainnya'],true)) {$where.=($where?' AND ':' WHERE ').'d.document_type=?';$params[]=$type;}
-        $stmt=$dbx->prepare("SELECT d.id,d.document_type,d.original_name,d.mime_type,d.size_bytes,d.status,d.review_note,d.created_at,d.rt_id,r.full_name,RIGHT(r.nik,4) AS nik_last4,u.full_name AS uploader FROM resident_documents d LEFT JOIN residents r ON r.id=d.resident_id JOIN app_users u ON u.id=d.uploaded_by{$where} ORDER BY d.created_at DESC LIMIT 100");
+        if($documentSearch!=='') {
+            $searchTail=preg_match('/^[0-9]{4,16}$/',$documentSearch)?substr($documentSearch,-4):$documentSearch;
+            $where.=($where?' AND ':' WHERE ').'(r.full_name LIKE ? OR d.original_name LIKE ? OR d.document_type LIKE ? OR RIGHT(r.nik,4)=? OR RIGHT(f.family_number,4)=?)';
+            $params[]='%'.$documentSearch.'%';$params[]='%'.$documentSearch.'%';$params[]='%'.$documentSearch.'%';$params[]=$searchTail;$params[]=$searchTail;
+        }
+        $docCountStmt=$dbx->prepare("SELECT COUNT(*) FROM resident_documents d LEFT JOIN residents r ON r.id=d.resident_id LEFT JOIN family_records f ON f.id=d.family_id JOIN app_users u ON u.id=d.uploaded_by{$where}");
+        $docCountStmt->execute($params);$documentsTotal=(int)$docCountStmt->fetchColumn();
+        $documentsPage=max(1,(int)($_GET['doc_p'] ?? 1));$documentsPerPage=30;
+        $documentsPages=max(1,(int)ceil($documentsTotal/$documentsPerPage));$documentsPage=min($documentsPage,$documentsPages);
+        $documentsOffset=($documentsPage-1)*$documentsPerPage;
+        $stmt=$dbx->prepare("SELECT d.id,d.document_type,d.original_name,d.mime_type,d.size_bytes,d.status,d.review_note,d.created_at,d.rt_id,r.full_name,RIGHT(r.nik,4) AS nik_last4,u.full_name AS uploader FROM resident_documents d LEFT JOIN residents r ON r.id=d.resident_id LEFT JOIN family_records f ON f.id=d.family_id JOIN app_users u ON u.id=d.uploaded_by{$where} ORDER BY d.created_at DESC LIMIT {$documentsPerPage} OFFSET {$documentsOffset}");
         $stmt->execute($params);$docs=$stmt->fetchAll();
-        echo '<section class="panel"><div class="section-heading compact-heading"><div><h2>Arsip dokumen & antrean pemeriksaan</h2><p>Hanya daftar sesuai hak akses server, maksimum 100 per halaman.</p></div></div><form method="get" class="form-grid"><input type="hidden" name="page" value="dokumen"><label>Status<select name="status"><option value="">Semua status</option>';
+        echo '<section class="panel"><div class="section-heading compact-heading"><div><h2>Arsip dokumen & antrean pemeriksaan</h2><p>Pencarian dan filter berlaku hanya pada wilayah yang diizinkan untuk akun ini.</p></div></div><form method="get" class="form-grid"><input type="hidden" name="page" value="dokumen"><label class="full-span">Cari dokumen<input name="q" value="'.e($documentSearch).'" placeholder="Nama warga, nama file, jenis dokumen, 4 digit akhir NIK/KK"></label><label>Status<select name="status"><option value="">Semua status</option>';
         foreach(['pending','approved','revision_requested','rejected','archived'] as $s) echo '<option value="'.e($s).'"'.($status===$s?' selected':'').'>'.e(status_text($s)).'</option>';
         echo '</select></label><label>Jenis<select name="type"><option value="">Semua jenis</option>';
         foreach(['ktp','kk','akta','surat_pendukung','lainnya'] as $t) echo '<option value="'.e($t).'"'.($type===$t?' selected':'').'>'.e(strtoupper($t)).'</option>';
-        echo '</select></label><div class="full-span"><button class="button button-small button-outline" type="submit">Terapkan filter</button></div></form>';
+        echo '</select></label><div class="full-span button-row"><button class="button button-small button-outline" type="submit">Terapkan filter</button><a class="button button-small button-outline" href="'.e(app_url('dokumen')).'">Reset</a></div></form>';
         if($docs) { echo '<div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Dokumen</th><th>Pemilik</th><th>Status</th><th>Unggahan</th><th>Aksi</th></tr></thead><tbody>';
             foreach($docs as $d) {
                 echo '<tr><td><strong>'.e(strtoupper($d['document_type'])).'</strong><small>'.e($d['original_name']).' · '.number_format((int)$d['size_bytes']/1024,1,',','.').' KB</small></td><td>'.e($d['full_name']??'Data diarsipkan').'<small>NIK akhir '.e($d['nik_last4']??'----').'</small></td><td><span class="status-pill '.e(status_class($d['status'])).'">'.e(status_text($d['status'])).'</span>'.(!empty($d['review_note'])?'<small>'.e($d['review_note']).'</small>':'').'</td><td>'.e(date('d M Y H:i',strtotime($d['created_at']))).'<small>Oleh '.e($d['uploader']).'</small></td><td><div class="action-links"><a class="text-link" href="'.e(app_url('private-document',['id'=>(int)$d['id']])).'">Unduh privat</a>';
@@ -258,6 +269,14 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             }
             echo '</tbody></table></div>';
         } else echo '<p>Belum ada dokumen untuk filter ini.</p>';
+        if($documentsTotal>0) {
+            $docFrom=$documentsOffset+1;$docTo=min($documentsOffset+count($docs),$documentsTotal);
+            echo '<div class="button-row" style="justify-content:space-between;align-items:center;margin-top:16px"><span class="muted">Menampilkan '.(int)$docFrom.'–'.(int)$docTo.' dari '.(int)$documentsTotal.' dokumen · halaman '.(int)$documentsPage.' dari '.(int)$documentsPages.'</span><div class="button-row">';
+            $docParams=['q'=>$documentSearch,'status'=>$status,'type'=>$type];
+            if($documentsPage>1) echo '<a class="button button-small button-outline" href="'.e(app_url('dokumen',$docParams+['doc_p'=>$documentsPage-1])).'">← Sebelumnya</a>';
+            if($documentsPage<$documentsPages) echo '<a class="button button-small button-outline" href="'.e(app_url('dokumen',$docParams+['doc_p'=>$documentsPage+1])).'">Berikutnya →</a>';
+            echo '</div></div>';
+        }
         echo '</section>';
     } elseif($mvPage==='perubahan') {
         mv_top('Antrean Verifikasi','Periksa usulan perubahan data, perpindahan RT, dan data baru sebelum menjadi catatan resmi.');
