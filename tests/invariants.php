@@ -256,6 +256,8 @@ check_true(str_contains($bundleSource, "status='approved' AND document_type IN (
 check_true(str_contains($bundleSource, "module_audit_actor(\$user, 'export', 'resident_private_bundle'"), 'Private resident bundle exports must be audit logged.');
 check_true(str_contains($bundleSource, "header('Cache-Control: private, no-store, max-age=0')"), 'Private resident bundles must disable caching.');
 check_true(str_contains($bundleSource, "LIMIT 10001") && str_contains($bundleSource, "count(\$rows) > 10000"), 'Resident exports must enforce the row limit.');
+check_true(str_contains($bundleSource, 'scopeChecks') && str_contains($bundleSource, 'ID wilayah tidak cocok dengan filter'), 'Resident export scope IDs must be validated against the selected active region table.');
+check_true(str_contains($bundleSource, 'ZipArchive::CREATE | ZipArchive::OVERWRITE'), 'ZIP export must create the temporary archive before overwriting it.');
 check_true(str_contains($bundleView, "'admin-resident-export' => ['admin_desa']") && str_contains($bundleView, 'Unduh Data Penduduk'), 'Admin export UI must be restricted to Admin Desa.');
 check_true(str_contains($indexSource, 'module_serve_admin_resident_bundle();'), 'Admin resident bundle endpoint must be invoked by the request dispatcher.');
 
