@@ -29,8 +29,10 @@ $pdo = new PDO("mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4",
 $role = (string)($argv[1] ?? '');
 $page = (string)($argv[2] ?? 'dashboard');
 $allowed = [
-    'admin_desa' => ['dashboard','admin-resident-export'],
-    'owner' => ['dashboard','admin-users','admin-resident-export'],
+    'admin_desa' => ['dashboard','admin-resident-export','admin-site'],
+    'owner' => ['dashboard','admin-users','admin-resident-export','admin-site'],
+    // CMS authorization regression: a normal resident must never see its settings or upload controls.
+    'warga' => ['admin-site'],
 ];
 if (!isset($allowed[$role]) || !in_array($page, $allowed[$role], true)) {
     fwrite(STDERR, "Unsupported dashboard smoke target.\n");
@@ -42,14 +44,15 @@ $username = 'ci-' . $role . '-' . $tag;
 $userId = 0;
 $exitCode = 0;
 try {
+    $testName = $role === 'owner' ? 'CI Owner' : ($role === 'admin_desa' ? 'CI Admin Desa' : 'CI Warga');
     $stmt = $pdo->prepare('INSERT INTO app_users (username,full_name,password_hash,role,is_active,must_change_password,session_version) VALUES (?,?,?,?,1,0,1)');
-    $stmt->execute([$username, 'CI ' . ($role === 'owner' ? 'Owner' : 'Admin Desa'), password_hash(bin2hex(random_bytes(24)), PASSWORD_DEFAULT), $role]);
+    $stmt->execute([$username, $testName, password_hash(bin2hex(random_bytes(24)), PASSWORD_DEFAULT), $role]);
     $userId = (int)$pdo->lastInsertId();
 
     $_SESSION['user'] = [
         'id'=>$userId,
         'username'=>$username,
-        'full_name'=>'CI ' . ($role === 'owner' ? 'Owner' : 'Admin Desa'),
+        'full_name'=>$testName,
         'role'=>$role,
         'rt_id'=>null,
         'rw_id'=>null,
@@ -78,6 +81,16 @@ try {
     } elseif ($page === 'admin-resident-export') {
         if (!str_contains($html, 'Siapkan ekspor') || !str_contains($html, 'resident-export-scope')) {
             throw new RuntimeException('Initial resident-export request did not render its filter form.');
+        }
+    } elseif ($page === 'admin-site' && $role === 'warga') {
+        if (!str_contains($html, 'Akses terbatas') || str_contains($html, 'data-site-setting-filter') || str_contains($html, 'name="hero_image"')) {
+            throw new RuntimeException('Resident role must be denied the website editor and its image upload controls.');
+        }
+    } elseif ($page === 'admin-site') {
+        foreach (['Tampilan Website','data-site-setting-filter','Foto utama beranda','name="hero_image"','name="logo_image"','reset_site_image[hero_image]','Terbitkan ke website','name="_csrf"'] as $needle) {
+            if (!str_contains($html, $needle)) {
+                throw new RuntimeException('CMS editor for ' . $role . ' is missing its settings, image controls, draft/publish actions, or CSRF field: ' . $needle);
+            }
         }
     }
     fwrite(STDOUT, "PASS: {$role} / {$page} rendered.\n");
