@@ -69,7 +69,23 @@ function verify_csrf(): void {
 }
 
 function current_user(): ?array {
-    return isset($_SESSION['user']) && is_array($_SESSION['user']) ? $_SESSION['user'] : null;
+    if (!isset($_SESSION['user']) || !is_array($_SESSION['user'])) return null;
+    $user = $_SESSION['user'];
+    try {
+        $stmt = db()->prepare('SELECT is_active, session_version FROM app_users WHERE id=? LIMIT 1');
+        $stmt->execute([(int)($user['id'] ?? 0)]);
+        $state = $stmt->fetch();
+        if (!$state || !(int)$state['is_active']
+            || (int)($user['session_version'] ?? 0) !== (int)$state['session_version']) {
+            unset($_SESSION['user']);
+            session_regenerate_id(true);
+            return null;
+        }
+    } catch (Throwable $ignored) {
+        // Fail closed for authenticated areas when the account state cannot be verified.
+        return null;
+    }
+    return $user;
 }
 
 function require_login(): array {
