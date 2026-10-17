@@ -72,7 +72,7 @@ foreach ([
     'function module_serve_private_document',
     'function module_serve_export',
     'function module_upload_private_file',
-    'function module_import_residents',
+    'module_import_residents',
     'function module_normalize_import_header',
     'module_publish_site_revision',
     'module_restore_site_version',
