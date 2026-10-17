@@ -105,15 +105,16 @@ function module_read_resident_csv(string $path): array {
         if($first===false) throw new RuntimeException('File CSV kosong.');
         $delimiter=substr_count($first,';')>substr_count($first,',')?';':',';
         rewind($handle);
-        $rawHeaders=fgetcsv($handle,0,$delimiter,'"','\\\\');
+        $rawHeaders=fgetcsv($handle,0,$delimiter,'"','');
         if(!$rawHeaders || count($rawHeaders)<3) throw new RuntimeException('Header CSV tidak valid. Unduh template untuk melihat kolom wajib.');
         $headers=[];
         foreach($rawHeaders as $header) $headers[]=module_normalize_import_header((string)$header);
         $required=['family_number','nik','full_name','address'];
         foreach($required as $name) if(!in_array($name,$headers,true)) throw new RuntimeException('Kolom wajib tidak ditemukan: '.$name.'. Gunakan header nomor_kk; nik; nama_lengkap; alamat.');
         $rows=[];$errors=[];$line=1;$seenNiks=[];
-        while(($fields=fgetcsv($handle,0,$delimiter,'"','\\\\'))!==false) {
+        while(($fields=fgetcsv($handle,0,$delimiter,'"',''))!==false) {
             $line++;
+            if($line>1001) throw new RuntimeException('Maksimal 1.000 baris warga per impor. Bagi file menjadi beberapa bagian.');
             if(count($fields)===1 && trim((string)$fields[0])==='') continue;
             if(count($fields)!==count($headers)) { $errors[]="Baris {$line}: jumlah kolom tidak sesuai header."; continue; }
             $data=array_combine($headers,$fields);
@@ -386,7 +387,6 @@ function module_handle_post(): void {
                             $stmt->execute([$row['nik']]);
                             if($stmt->fetchColumn()) { $errors[]="Baris {$row['line']}: NIK baru saja tercatat oleh proses lain; baris dilewati."; continue; }
                             $relation=$row['relationship_to_head'];
-                            if(!$family['head_resident_id'] ?? false) { /* head will be set below after first successful insert */ }
                             if((int)($family['head_resident_id'] ?? 0)>0 && $relation==='') $relation='Anggota keluarga';
                             $stmt=$pdo->prepare("INSERT INTO residents (family_id,rt_id,nik,full_name,birth_date,gender,phone,relationship_to_head,resident_status,created_by) VALUES (?,?,?,?,?,?,?,?, 'pending_review',?)");
                             $stmt->execute([$familyId,$rtId,$row['nik'],$row['full_name'],$row['birth_date'],$row['gender'],$row['phone']!==''?$row['phone']:null,$relation!==''?$relation:null,(int)$user['id']]);
