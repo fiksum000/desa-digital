@@ -171,6 +171,35 @@ check_true(str_contains($htaccess, 'RewriteRule ^(app|bin|docker|docs|tests|stor
 check_true(str_contains($htaccess, '[F,L,NC]'), 'Internal path blocking must return a forbidden response.');
 check_true(str_contains($htaccess, '.env(\\..*)?'), 'Environment variants must not be exposed over HTTP.');
 check_true(str_contains($htaccess, '.*~)
+check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
+check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
+$compose = load_text('docker-compose.yml');
+check_true(str_contains($compose, 'DB_ROOT_PASSWORD'), 'Compose must require a database root password.');
+check_true(str_contains($compose, 'database_data:/var/lib/mysql'), 'Database must use a persistent volume.');
+check_true(!preg_match('/ports:\s*\n\s*-\s*["\']?3306:/m', $compose), 'Database port must not be exposed on the host.');
+
+if ($failures) {
+    fwrite(STDERR, "FAILED: " . count($failures) . " of {$checks} checks\n");
+    foreach ($failures as $failure) fwrite(STDERR, " - {$failure}\n");
+    exit(1);
+}
+fwrite(STDOUT, "PASS: {$checks} static project invariants checked. (Not a substitute for integration/security testing.)\n");
+), 'Temporary editor backups must not be exposed over HTTP.');
+$vhost = load_text('docker/apache-vhost.conf');
+check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
+check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
+$compose = load_text('docker-compose.yml');
+check_true(str_contains($compose, 'DB_ROOT_PASSWORD'), 'Compose must require a database root password.');
+check_true(str_contains($compose, 'database_data:/var/lib/mysql'), 'Database must use a persistent volume.');
+check_true(!preg_match('/ports:\s*\n\s*-\s*["\']?3306:/m', $compose), 'Database port must not be exposed on the host.');
+
+if ($failures) {
+    fwrite(STDERR, "FAILED: " . count($failures) . " of {$checks} checks\n");
+    foreach ($failures as $failure) fwrite(STDERR, " - {$failure}\n");
+    exit(1);
+}
+fwrite(STDOUT, "PASS: {$checks} static project invariants checked. (Not a substitute for integration/security testing.)\n");
+), 'Temporary editor backups must not be exposed over HTTP.');
 $vhost = load_text('docker/apache-vhost.conf');
 check_true(str_contains($vhost, '<Directory /var/www/html/bin>'), 'Apache config must protect the CLI tools folder.');
 check_true(str_contains($vhost, '<Directory /var/www/html/docker>'), 'Apache config must protect the server config folder.');
