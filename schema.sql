@@ -192,15 +192,20 @@ CREATE TABLE IF NOT EXISTS service_requests (
   assigned_to BIGINT UNSIGNED NULL,
   approved_by BIGINT UNSIGNED NULL,
   approved_at DATETIME NULL,
+  letter_number VARCHAR(100) NULL,
+  letter_issued_by BIGINT UNSIGNED NULL,
+  letter_issued_at DATETIME NULL,
   completed_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_requests_status (status, created_at),
   KEY idx_requests_applicant (applicant_id, created_at),
+  UNIQUE KEY uq_service_letter_number (letter_number),
   CONSTRAINT fk_request_service_type FOREIGN KEY (service_type_id) REFERENCES service_types(id) ON DELETE RESTRICT,
   CONSTRAINT fk_request_applicant FOREIGN KEY (applicant_id) REFERENCES app_users(id) ON DELETE RESTRICT,
   CONSTRAINT fk_request_assignee FOREIGN KEY (assigned_to) REFERENCES app_users(id) ON DELETE SET NULL,
-  CONSTRAINT fk_request_approver FOREIGN KEY (approved_by) REFERENCES app_users(id) ON DELETE SET NULL
+  CONSTRAINT fk_request_approver FOREIGN KEY (approved_by) REFERENCES app_users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_request_letter_issuer FOREIGN KEY (letter_issued_by) REFERENCES app_users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS service_request_files (
