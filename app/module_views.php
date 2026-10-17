@@ -483,6 +483,8 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
         echo '</section>';
     } elseif($mvPage==='notifikasi') {
         if(!mv_guard($mvPage,$mvUser,$mvAllowedRoles[$mvPage])) return;
+        $dbx=mv_db_or_message();
+        if(!$dbx) return;
         mv_top('Notifikasi','Pemberitahuan privat untuk akun ini. Notifikasi tidak pernah ditampilkan kepada akun lain.');
         $stmt=$dbx->prepare('SELECT id,title,message,notification_type,entity_type,entity_id,read_at,created_at FROM user_notifications WHERE user_id=? ORDER BY created_at DESC,id DESC LIMIT 100');
         $stmt->execute([(int)$mvUser['id']]);$notificationRows=$stmt->fetchAll();
