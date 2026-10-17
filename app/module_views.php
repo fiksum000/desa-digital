@@ -14,6 +14,7 @@ $mvAllowedRoles = [
     'admin-services' => ['admin_desa'],
     'admin-directory' => ['petugas','admin_desa'],
     'admin-budget' => ['admin_desa'],
+    'admin-resident-export' => ['admin_desa'],
     'laporan' => ['rt','rw','petugas','admin_desa','kepala_desa'],
     'notifikasi' => ['warga','rt','rw','petugas','admin_desa','kepala_desa'],
 ];
@@ -29,7 +30,7 @@ function mv_tools_nav(array $user): void {
     if(in_array($role,['rw','admin_desa','petugas'],true)) echo '<a href="'.e(app_url('rw-rekap')).'">Rekap RW</a>';
     if(in_array($role,['rt','petugas','admin_desa'],true)) { echo '<a href="'.e(app_url('dokumen')).'">Dokumen Warga</a><a href="'.e(app_url('perubahan')).'">Antrean Verifikasi</a>'; }
     if($role==='admin_desa') {
-        echo '<a href="'.e(app_url('admin-users')).'">Akun RT/RW</a><a href="'.e(app_url('admin-wilayah')).'">Wilayah</a><a href="'.e(app_url('admin-services')).'">Jenis Layanan</a><a href="'.e(app_url('admin-directory')).'">UMKM/Wisata</a><a href="'.e(app_url('admin-budget')).'">Transparansi</a><a href="'.e(app_url('admin-site')).'">Tampilan Website</a>';
+        echo '<a href="'.e(app_url('admin-resident-export')).'">Unduh Data Penduduk</a><a href="'.e(app_url('admin-users')).'">Akun RT/RW</a><a href="'.e(app_url('admin-wilayah')).'">Wilayah</a><a href="'.e(app_url('admin-services')).'">Jenis Layanan</a><a href="'.e(app_url('admin-directory')).'">UMKM/Wisata</a><a href="'.e(app_url('admin-budget')).'">Transparansi</a><a href="'.e(app_url('admin-site')).'">Tampilan Website</a>';
     }
     if(in_array($role,['rt','rw','petugas','admin_desa','kepala_desa'],true)) echo '<a href="'.e(app_url('laporan')).'">Laporan</a>';
     echo '</nav>';
@@ -506,6 +507,19 @@ if (in_array($mvPage,['umkm','peta','transparansi','kontak'],true)) {
             echo '<p class="muted">Maksimal 100 notifikasi terbaru ditampilkan. Isi notifikasi dibatasi pada akun penerima dan tidak membuka lampiran privat secara langsung.</p>';
         } else echo '<div class="empty-news"><div><strong>Belum ada notifikasi.</strong><p>Pemberitahuan akan muncul di sini saat ada pembaruan yang terkait dengan akunmu.</p></div></div>';
         echo '</section>';
+    } elseif($mvPage==='admin-resident-export') {
+        mv_top('Unduh Data Penduduk','Unduh daftar penduduk lengkap atau paket ZIP berisi CSV dan KTP/KK yang sudah disetujui. Akses khusus Admin Desa; setiap ekspor dicatat.');
+        $dusuns=$dbx->query('SELECT id,name FROM dusun WHERE is_active=1 ORDER BY name')->fetchAll();
+        $rws=$dbx->query('SELECT rw.id,rw.number_code,d.name AS dusun_name FROM rw_units rw LEFT JOIN dusun d ON d.id=rw.dusun_id WHERE rw.is_active=1 ORDER BY d.name,rw.number_code')->fetchAll();
+        $rts=$dbx->query('SELECT rt.id,rt.number_code,rw.number_code AS rw_code,d.name AS dusun_name FROM rt_units rt JOIN rw_units rw ON rw.id=rt.rw_id LEFT JOIN dusun d ON d.id=rw.dusun_id WHERE rt.is_active=1 AND rw.is_active=1 ORDER BY d.name,rw.number_code,rt.number_code')->fetchAll();
+        echo '<section class="panel"><h2>Siapkan ekspor</h2><p>File berisi data pribadi, termasuk NIK dan nomor KK lengkap. Simpan di tempat aman dan bagikan hanya kepada pihak yang berwenang. Dokumen KTP/KK yang masuk ke ZIP hanya yang berstatus disetujui.</p><form method="get" action="index.php" class="form-grid"><input type="hidden" name="page" value="admin-resident-export"><label>Wilayah<select name="scope" id="resident-export-scope"><option value="all">Seluruh desa</option><option value="dusun">Pilih dusun</option><option value="rw">Pilih RW</option><option value="rt">Pilih RT</option></select></label><label>Dusun / RW / RT<select name="scope_id" id="resident-export-scope-id"><option value="">Tidak diperlukan untuk seluruh desa</option>';
+        foreach($dusuns as $d) echo '<option data-scope="dusun" value="'.(int)$d['id'].'">'.e($d['name']).'</option>';
+        foreach($rws as $rw) echo '<option data-scope="rw" value="'.(int)$rw['id'].'">'.e(($rw['dusun_name']??'Dusun -').' / RW '.$rw['number_code']).'</option>';
+        foreach($rts as $rt) echo '<option data-scope="rt" value="'.(int)$rt['id'].'">'.e(($rt['dusun_name']??'Dusun -').' / RW '.$rt['rw_code'].' / RT '.$rt['number_code']).'</option>';
+        echo '</select></label><label>Jenis unduhan<select name="bundle"><option value="data">CSV daftar penduduk lengkap</option><option value="data_documents">ZIP: CSV + KTP/KK disetujui</option></select></label><label class="full-span">Alasan kerja / nomor disposisi<input name="reason" minlength="4" maxlength="300" placeholder="Contoh: pemutakhiran data administrasi desa" required></label><div class="full-span"><button class="button button-primary" type="submit">Siapkan unduhan →</button></div></form><p class="muted">Batas satu ekspor adalah 10.000 penduduk. Untuk data lebih banyak, pecah unduhan per wilayah. ZIP membutuhkan ekstensi PHP ZIP pada server.</p></section>
+        <script>
+        (()=>{const scope=document.getElementById('resident-export-scope');const select=document.getElementById('resident-export-scope-id');if(!scope||!select)return;const sync=()=>{const chosen=scope.value;let first=true;for(const option of select.options){if(!option.value){option.hidden=chosen!=='all';option.disabled=chosen!=='all';if(chosen==='all')option.selected=true;continue;}const visible=option.dataset.scope===chosen;option.hidden=!visible;option.disabled=!visible;if(visible&&first){option.selected=true;first=false;}}select.required=chosen!=='all';if(chosen==='all')select.value='';else if(!select.value||select.options[select.selectedIndex]?.dataset.scope!==chosen){const firstOption=[...select.options].find(o=>o.dataset.scope===chosen);if(firstOption)select.value=firstOption.value;}};scope.addEventListener('change',sync);sync();})();
+        </script></section>
     } elseif($mvPage==='laporan') {
         mv_top('Laporan & Ekspor','Ekspor hanya sesuai kewenangan dan cakupan wilayah akun. Ekspor dicatat di audit log, dan NIK/KK lengkap tidak disertakan.');
         $kinds=[
