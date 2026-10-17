@@ -14,6 +14,7 @@ $complaints = [];
 $adminRequests = [];
 $adminComplaints = [];
 $adminNews = [];
+$editingNews = null;
 $stats = ['residents' => null, 'families' => null, 'dusun' => null];
 
 function status_text(string $status): string {
@@ -34,6 +35,34 @@ function safe_slug(string $value): string {
     $value = strtolower(trim($value));
     $value = preg_replace('/[^a-z0-9]+/i', '-', iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value) ?: $value);
     return trim(substr((string)$value, 0, 220), '-') ?: 'berita-' . bin2hex(random_bytes(3));
+}
+function input_local_datetime_to_utc(string $value): ?string {
+    $value = trim($value);
+    if ($value === '') return null;
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d\\TH:i', $value, new DateTimeZone('Asia/Jakarta'));
+    $errors = DateTimeImmutable::getLastErrors();
+    if (!$date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
+        throw new RuntimeException('Format jadwal tanggal tidak valid.');
+    }
+    return $date->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+}
+function utc_datetime_to_local_input(?string $value): string {
+    if (!$value) return '';
+    try {
+        return (new DateTimeImmutable($value, new DateTimeZone('UTC')))
+            ->setTimezone(new DateTimeZone('Asia/Jakarta'))->format('Y-m-d\\TH:i');
+    } catch (Throwable $e) {
+        return '';
+    }
+}
+function utc_datetime_to_local_display(?string $value, string $format = 'd M Y H:i'): string {
+    if (!$value) return '—';
+    try {
+        return (new DateTimeImmutable($value, new DateTimeZone('UTC')))
+            ->setTimezone(new DateTimeZone('Asia/Jakarta'))->format($format);
+    } catch (Throwable $e) {
+        return '—';
+    }
 }
 $siteContent = [];
 function site_val(string $key, string $default = ''): string {
@@ -232,19 +261,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_to('admin');
         } elseif ($action === 'save_news') {
             $user = require_roles(['petugas','admin_desa']);
+            $id = filter_input(INPUT_POST, 'news_id', FILTER_VALIDATE_INT) ?: null;
             $title = trim((string)($_POST['title'] ?? ''));
             $category = (string)($_POST['category'] ?? 'berita');
             $excerpt = trim((string)($_POST['excerpt'] ?? ''));
             $body = trim((string)($_POST['body'] ?? ''));
             $status = (string)($_POST['status'] ?? 'draft');
+            $publishAt = input_local_datetime_to_utc((string)($_POST['publish_at'] ?? ''));
+            $expireAt = input_local_datetime_to_utc((string)($_POST['expire_at'] ?? ''));
             if (mb_strlen($title) < 4 || mb_strlen($title) > 220 || mb_strlen($body) < 10 || mb_strlen($body) > 30000) throw new RuntimeException('Judul atau isi berita belum valid.');
-            if (!in_array($category, ['kegiatan','pengumuman','program','berita'], true) || !in_array($status, ['draft','published'], true)) throw new RuntimeException('Kategori atau status berita tidak valid.');
-            $imageKey = upload_public_image('image');
-            $slug = safe_slug($title) . '-' . bin2hex(random_bytes(3));
-            $stmt = $pdo->prepare('INSERT INTO news_posts (title,slug,category,excerpt,body,image_key,alt_text,status,publish_at,author_id) VALUES (?,?,?,?,?,?,?,?,?,?)');
-            $stmt->execute([$title,$slug,$category,mb_substr($excerpt,0,500),$body,$imageKey,trim((string)($_POST['alt_text'] ?? '')) ?: $title,$status,$status === 'published' ? date('Y-m-d H:i:s') : null,(int)$user['id']]);
-            audit_log((int)$user['id'], 'create', 'news_posts', (string)$pdo->lastInsertId(), null, ['title'=>$title,'status'=>$status]);
-            flash($status === 'published' ? 'Berita berhasil diterbitkan.' : 'Berita disimpan sebagai draf.');
+            if (!in_array($category, ['kegiatan','pengumuman','program','berita'], true) || !in_array($status, ['draft','published','archived'], true)) throw new RuntimeException('Kategori atau status berita tidak valid.');
+            if ($status === 'published' && $publishAt === null) $publishAt = gmdate('Y-m-d H:i:s');
+            if ($publishAt !== null && $expireAt !== null && $expireAt <= $publishAt) throw new RuntimeException('Waktu selesai tayang harus setelah waktu mulai tayang.');
+            $altText = trim((string)($_POST['alt_text'] ?? '')) ?: $title;
+            $uploadedImage = upload_public_image('image');
+            if ($id) {
+                $stmt=$pdo->prepare('SELECT id,slug,image_key,status,publish_at,expire_at,title FROM news_posts WHERE id=? LIMIT 1');
+                $stmt->execute([$id]); $before=$stmt->fetch();
+                if (!$before) throw new RuntimeException('Berita yang akan diedit tidak ditemukan.');
+                $imageKey = $uploadedImage ?? $before['image_key'];
+                $stmt=$pdo->prepare('UPDATE news_posts SET title=?,category=?,excerpt=?,body=?,image_key=?,alt_text=?,status=?,publish_at=?,expire_at=? WHERE id=?');
+                $stmt->execute([$title,$category,mb_substr($excerpt,0,500),$body,$imageKey,$altText,$status,$publishAt,$expireAt,(int)$id]);
+                audit_log((int)$user['id'],'update','news_posts',(string)$id,$before,['title'=>$title,'status'=>$status,'publish_at'=>$publishAt,'expire_at'=>$expireAt]);
+                flash($status === 'published' ? 'Berita diperbarui dan dijadwalkan/diterbitkan.' : ($status === 'draft' ? 'Perubahan berita disimpan sebagai draf.' : 'Berita diarsipkan.'));
+            } else {
+                $slug = safe_slug($title) . '-' . bin2hex(random_bytes(3));
+                $stmt = $pdo->prepare('INSERT INTO news_posts (title,slug,category,excerpt,body,image_key,alt_text,status,publish_at,expire_at,author_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)');
+                $stmt->execute([$title,$slug,$category,mb_substr($excerpt,0,500),$body,$uploadedImage,$altText,$status,$publishAt,$expireAt,(int)$user['id']]);
+                $newId=(string)$pdo->lastInsertId();
+                audit_log((int)$user['id'], 'create', 'news_posts', $newId, null, ['title'=>$title,'status'=>$status,'publish_at'=>$publishAt,'expire_at'=>$expireAt]);
+                flash($status === 'published' ? 'Berita berhasil dijadwalkan/diterbitkan.' : ($status === 'draft' ? 'Berita disimpan sebagai draf.' : 'Berita dibuat sebagai arsip.'));
+            }
             redirect_to('admin');
         } elseif ($action === 'set_news_status') {
             $user = require_roles(['petugas','admin_desa']);
@@ -294,7 +341,13 @@ try {
     if ($page === 'admin' && $viewer && in_array($viewer['role'], ['petugas','admin_desa','kepala_desa'], true)) {
         $adminRequests = $pdo->query('SELECT sr.*,u.full_name AS applicant_name,st.name AS service_name FROM service_requests sr JOIN app_users u ON u.id=sr.applicant_id JOIN service_types st ON st.id=sr.service_type_id ORDER BY FIELD(sr.status,\'submitted\',\'in_review\',\'revision_requested\',\'approved\',\'ready\',\'completed\'),sr.created_at DESC LIMIT 100')->fetchAll();
         $adminComplaints = $pdo->query('SELECT c.*,u.full_name AS reporter_name FROM complaints c JOIN app_users u ON u.id=c.reporter_id ORDER BY c.created_at DESC LIMIT 50')->fetchAll();
-        $adminNews = $pdo->query('SELECT id,title,status,category,created_at FROM news_posts ORDER BY created_at DESC LIMIT 30')->fetchAll();
+        $adminNews = $pdo->query('SELECT id,title,status,category,created_at,publish_at,expire_at FROM news_posts ORDER BY created_at DESC LIMIT 30')->fetchAll();
+        $editNewsId = filter_input(INPUT_GET, 'edit_news', FILTER_VALIDATE_INT);
+        if ($editNewsId) {
+            $stmt=$pdo->prepare('SELECT * FROM news_posts WHERE id=? LIMIT 1');
+            $stmt->execute([$editNewsId]);
+            $editingNews=$stmt->fetch() ?: null;
+        }
     }
 } catch (Throwable $exception) {
     $dbAvailable = false;
