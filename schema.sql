@@ -250,6 +250,42 @@ CREATE TABLE IF NOT EXISTS news_posts (
   CONSTRAINT fk_news_author FOREIGN KEY (author_id) REFERENCES app_users(id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS public_directory_items (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  kind ENUM('umkm','wisata') NOT NULL,
+  title VARCHAR(220) NOT NULL,
+  slug VARCHAR(240) NOT NULL UNIQUE,
+  excerpt VARCHAR(500) NULL,
+  description MEDIUMTEXT NOT NULL,
+  address VARCHAR(500) NULL,
+  contact VARCHAR(160) NULL,
+  image_key VARCHAR(255) NULL,
+  alt_text VARCHAR(255) NULL,
+  status ENUM('draft','published','archived') NOT NULL DEFAULT 'draft',
+  sort_order INT NOT NULL DEFAULT 0,
+  author_id BIGINT UNSIGNED NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_directory_public (kind,status,sort_order,created_at),
+  CONSTRAINT fk_directory_author FOREIGN KEY (author_id) REFERENCES app_users(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS budget_reports (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  fiscal_year YEAR NOT NULL,
+  title VARCHAR(220) NOT NULL,
+  summary MEDIUMTEXT NOT NULL,
+  amount DECIMAL(18,2) NULL,
+  document_key VARCHAR(255) NULL,
+  status ENUM('draft','published','archived') NOT NULL DEFAULT 'draft',
+  published_by BIGINT UNSIGNED NULL,
+  published_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_budget_public (status,fiscal_year),
+  CONSTRAINT fk_budget_publisher FOREIGN KEY (published_by) REFERENCES app_users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS site_content (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   content_key VARCHAR(120) NOT NULL UNIQUE,
