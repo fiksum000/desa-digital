@@ -87,6 +87,6 @@ jobs:
           grep -F 'Layanan Surat' /tmp/desa-digital-home.html
           grep -F 'Pengaduan Warga' /tmp/desa-digital-home.html
           grep -F 'Cek Status Pengajuan' /tmp/desa-digital-home.html
-          grep -F 'Berita & Pengumuman' /tmp/desa-digital-home.html
+          grep -F 'Berita &amp; Pengumuman' /tmp/desa-digital-home.html
           grep -F 'Jumlah Penduduk' /tmp/desa-digital-home.html
           grep -F 'Navigasi mobile' /tmp/desa-digital-home.html
