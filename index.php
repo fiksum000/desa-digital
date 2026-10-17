@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ((int)($_SESSION['login_failures'] ?? 0) >= 5) throw new RuntimeException('Terlalu banyak percobaan. Tunggu 10 menit lalu coba kembali.');
             $username = strtolower(trim((string)($_POST['username'] ?? '')));
             $password = (string)($_POST['password'] ?? '');
-            $stmt = $pdo->prepare('SELECT id,username,full_name,password_hash,role,rt_id,rw_id,is_active,must_change_password FROM app_users WHERE username=? LIMIT 1');
+            $stmt = $pdo->prepare('SELECT id,username,full_name,password_hash,role,rt_id,rw_id,is_active,must_change_password,session_version FROM app_users WHERE username=? LIMIT 1');
             $stmt->execute([$username]);
             $user = $stmt->fetch();
             if (!$user || !(int)$user['is_active'] || !password_verify($password, $user['password_hash'])) {
