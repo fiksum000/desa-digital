@@ -35,6 +35,11 @@ $columns = [
     'letter_issued_by' => 'BIGINT UNSIGNED NULL',
     'letter_issued_at' => 'DATETIME NULL',
 ];
+if (!letter_migration_column_exists($pdo, 'service_types', 'letter_template')) {
+    $pdo->exec('ALTER TABLE service_types ADD COLUMN letter_template TEXT NULL');
+    fwrite(STDOUT, "Added service_types.letter_template\n");
+}
+
 foreach ($columns as $name => $definition) {
     if (!letter_migration_column_exists($pdo, 'service_requests', $name)) {
         $pdo->exec('ALTER TABLE service_requests ADD COLUMN ' . $name . ' ' . $definition);
