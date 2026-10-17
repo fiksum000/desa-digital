@@ -15,7 +15,7 @@ function load_text(string $relative): string {
 }
 foreach ([
     'index.php', 'schema.sql', 'app/bootstrap.php', 'app/modules.php', 'app/module_views.php', 'assets/style.css',
-    'assets/app.js', 'assets/village-hero.svg', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php',
+    'assets/app.js', 'assets/village-hero.svg', 'assets/template-import-warga.csv', 'Dockerfile', 'bin/migrate_private_identifiers.php', 'bin/backup.sh', 'bin/restore.sh',
     'docker-compose.yml', 'docs/OPERASIONAL.md', '.env.example'
 ] as $relative) {
     check_true(is_file($root . '/' . $relative), "Missing required file: {$relative}");
@@ -138,6 +138,13 @@ $ignore = load_text('.gitignore');
 check_true(str_contains($ignore, '.env'), 'The real environment file must be ignored by Git.');
 check_true(!is_file($root . '/.env'), 'A real .env file must never be committed to the repository.');
 
+$backupScript = load_text('bin/backup.sh');
+$restoreScript = load_text('bin/restore.sh');
+check_true(str_contains($backupScript, 'mariadb-dump') && str_contains($backupScript, '--symmetric') && str_contains($backupScript, 'BACKUP_PASSPHRASE_FILE'), 'Backup must encrypt the database and uploads with a separately supplied passphrase file.');
+check_true(str_contains($backupScript, 'storage/uploads assets/uploads'), 'Backup must include private uploads and public media.');
+check_true(str_contains($backupScript, 'BACKUP_DIR') && str_contains($backupScript, 'tidak boleh berada di dalam repository'), 'Backup output must be outside the Git repository.');
+check_true(str_contains($restoreScript, 'Ketik RESTORE') && str_contains($restoreScript, 'APP_KEY') && str_contains($restoreScript, 'docker compose stop web'), 'Restore must require confirmation and warn about APP_KEY while stopping writes.');
+check_true(str_contains($restoreScript, 'assets/uploads') && str_contains($restoreScript, 'storage/uploads') && str_contains($restoreScript, 'jalur arsip tidak diizinkan'), 'Restore must restore upload volumes and validate archive paths.');
 $compose = load_text('docker-compose.yml');
 check_true(str_contains($compose, 'DB_ROOT_PASSWORD'), 'Compose must require a database root password.');
 check_true(str_contains($compose, 'database_data:/var/lib/mysql'), 'Database must use a persistent volume.');

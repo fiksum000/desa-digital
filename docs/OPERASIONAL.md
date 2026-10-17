@@ -34,6 +34,31 @@ Repository ini adalah tahap pengembangan/beta. Jangan masukkan data penduduk sun
 - Buat backup terenkripsi database dan file upload di lokasi terpisah. Uji pemulihan, jangan hanya cek file backup ada.
 - Isi profil desa, kontak, jenis surat, syarat resmi, SOP dan pejabat penyetuju bersama pemerintah desa. Statistik kosong sengaja ditampilkan sebagai tanda strip, bukan angka rekaan.
 
+## Backup dan pemulihan terenkripsi
+
+Syarat: Docker Compose, GPG, gzip, tar, dan SHA-256 tersedia pada host; `.env` sudah diisi; layanan web/database berjalan. Letakkan file frasa sandi backup di luar repo dengan izin `600`, dan atur `BACKUP_DIR` ke volume/disk backup terpisah.
+
+```bash
+chmod 600 /root/.config/desa-backup-passphrase
+BACKUP_DIR=/mnt/backup/desa-digital \
+BACKUP_PASSPHRASE_FILE=/root/.config/desa-backup-passphrase \
+./bin/backup.sh
+```
+
+Skrip menghasilkan dua arsip GPG AES-256: dump MariaDB serta media/unggahan (`storage/uploads` dan `assets/uploads`), plus checksum SHA-256. Salin hasil `.gpg` beserta checksum ke lokasi terpisah/offsite dan uji pemulihan secara berkala.
+
+Simpan salinan `APP_KEY` yang sama melalui pengelola rahasia terenkripsi dan terpisah. Kunci ini tidak disertakan dalam arsip backup. Jika kunci hilang atau berbeda, NIK/KK terenkripsi tidak bisa dibaca walaupun database pulih.
+
+Pemulihan **mengganti isi tabel database dan folder unggahan**. Pilih pasangan database/berkas dari timestamp yang sama, pastikan `APP_KEY` sama, lalu jalankan dari direktori repo:
+
+```bash
+BACKUP_PASSPHRASE_FILE=/root/.config/desa-backup-passphrase \
+./bin/restore.sh /mnt/backup/desa-digital/desa-digital-db-YYYYMMDDTHHMMSSZ.sql.gz.gpg \
+                  /mnt/backup/desa-digital/desa-digital-files-YYYYMMDDTHHMMSSZ.tar.gz.gpg
+```
+
+Baca peringatan dan ketik `RESTORE` hanya setelah memastikan pasangan backup benar. Skrip memverifikasi dekripsi/format dan menolak jalur arsip di luar dua direktori upload yang diizinkan, menghentikan web untuk mengurangi penulisan selama pemulihan, lalu menyalakannya kembali. Setelahnya, periksa `docker compose ps`, log aplikasi, akun warga/RT, dokumen privat, dan halaman publik. Ini belum menggantikan latihan pemulihan pada staging.
+
 ## Konflik usulan perubahan data
 
 Saat RT mengirim usulan koreksi, perubahan status, atau pindah RT, aplikasi menyimpan sidik HMAC dari data sumber warga, keluarga, serta daftar anggota keluarga saat itu. Nilai NIK/KK mentah tidak disalin ke snapshot.

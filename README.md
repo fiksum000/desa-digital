@@ -31,6 +31,10 @@ Panduan operasional akan ditempatkan di docs/OPERASIONAL.md. Skema database ada 
 
 NIK dan nomor KK disimpan dalam bentuk terenkripsi menggunakan libsodium; kolom pencarian hanya menyimpan topeng empat digit terakhir dan HMAC berkunci untuk mencegah duplikasi tanpa menyimpan nilai mentah sebagai indeks. Alamat lengkap personal, nomor telepon, lampiran KTP/KK, pengajuan pribadi, serta catatan internal tidak boleh tampil di halaman publik. Upload harus disimpan di lokasi privat, diakses melalui pemeriksaan autentikasi dan otorisasi di server, dan dicatat dalam audit log. Simpan APP_KEY dengan aman bersama strategi backup terenkripsi; kehilangan kunci berarti NIK/KK tidak dapat dibuka.
 
+## Backup dan pemulihan
+
+Backup terenkripsi tersedia melalui `bin/backup.sh`; pemulihan interaktif melalui `bin/restore.sh`. Baca `docs/OPERASIONAL.md` terlebih dahulu. Output backup dan file passphrase harus disimpan di luar repository; `APP_KEY` perlu dicadangkan secara terpisah dan aman.
+
 ## Pengembangan
 
 1. Bangun fondasi database, autentikasi, role, wilayah, dan audit.

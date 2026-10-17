@@ -9,3 +9,6 @@
 !/assets/uploads/.gitkeep
 .DS_Store
 *.log
+
+# Keep backup artifacts out of Git.
+/backups/
