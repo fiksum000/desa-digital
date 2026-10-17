@@ -35,6 +35,26 @@ check_true(module_can_access_service_file(['id'=>42,'role'=>'warga'], $filePolic
 check_true(!module_can_access_service_file(['id'=>43,'role'=>'warga'], $filePolicy), 'A resident must not access another resident service request attachments.');
 check_true(module_can_access_service_file(['id'=>8,'role'=>'petugas'], $filePolicy), 'Authorized service staff must be able to process request attachments.');
 check_true(!module_can_access_service_file(['id'=>9,'role'=>'rt'], $filePolicy), 'RT accounts must not access the private service attachment endpoint.');
+$pdfSample = module_build_service_letter_pdf([
+    'service_name'=>'Surat Uji',
+    'letter_number'=>'CI-LETTER-001',
+    'approved_at'=>'2026-10-17 09:00:00',
+    'letter_issued_at'=>'2026-10-17 09:05:00',
+    'applicant_name'=>'Warga Contoh',
+    'subject'=>'Keperluan uji',
+    'tracking_code'=>'CI-SR-TEST-001',
+    'request_data'=>json_encode(['details'=>'Pernyataan uji dengan tanda kurung (contoh).'],JSON_THROW_ON_ERROR),
+], [
+    'village_name'=>'Desa Uji',
+    'office_address'=>'Jalan Desa 1',
+    'village_regency'=>'Kabupaten Uji',
+    'village_province'=>'Jawa Barat',
+    'village_head_name'=>'Kepala Desa Uji',
+]);
+check_true(str_starts_with($pdfSample, '%PDF-1.4'), 'Service letter output must start with a PDF header.');
+check_true(str_contains($pdfSample, 'CI-LETTER-001'), 'Service letter PDF must include the entered letter number.');
+check_true(str_contains($pdfSample, '%%EOF'), 'Service letter PDF must contain an EOF marker.');
+
 check_true(module_service_status_transition_allowed('submitted','in_review'), 'A submitted request may enter review.');
 check_true(!module_service_status_transition_allowed('submitted','approved'), 'A submitted request must not skip the review stage.');
 check_true(module_service_status_transition_allowed('in_review','approved'), 'A reviewed request may be approved by an authorized final approver.');
