@@ -736,7 +736,7 @@ function module_handle_post(): void {
                             $pdo->prepare('UPDATE resident_documents SET rt_id=? WHERE resident_id IN (SELECT id FROM residents WHERE family_id=?)')->execute([$target,$familyId]);
                         } elseif ($request['change_type']==='deceased') {
                             $pdo->prepare("UPDATE residents SET resident_status='deceased',reviewed_by=?,reviewed_at=NOW() WHERE id=?")
-                                ->execute([(int)$user['id'],(int)$resident['id']);
+                                ->execute([(int)$user['id'],(int)$resident['id']]);
                         } elseif ($request['change_type']==='update') {
                             $allowed=['full_name','birth_date','gender','phone'];
                             $sets=[]; $values=[];
