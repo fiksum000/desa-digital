@@ -14,12 +14,7 @@ $pdo = new PDO("mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4",
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     PDO::ATTR_EMULATE_PREPARES => false,
 ]);
-expect_csv_guard();
-function expect_csv_guard(): void {
-    expect_true(module_csv_safe('=SUM(A1:A2)') === "'=SUM(A1:A2)", 'CSV formulas beginning with equals must be neutralized.');
-    expect_true(module_csv_safe('+CMD') === "'+CMD", 'CSV formulas beginning with plus must be neutralized.');
-    expect_true(module_csv_safe('Ordinary text') === 'Ordinary text', 'Ordinary CSV text must remain readable.');
-}
+
 $checks = 0;
 function expect_true(bool $condition, string $message): void {
     global $checks;
@@ -33,6 +28,9 @@ $required = [
     'site_content_revisions','public_directory_items','budget_reports','audit_logs',
 ];
 require_once dirname(__DIR__) . '/app/modules.php';
+expect_true(module_csv_safe('=SUM(A1:A2)') === "'=SUM(A1:A2)", 'CSV formulas beginning with equals must be neutralized.');
+expect_true(module_csv_safe('+CMD') === "'+CMD", 'CSV formulas beginning with plus must be neutralized.');
+expect_true(module_csv_safe('Ordinary text') === 'Ordinary text', 'Ordinary CSV text must remain readable.');
 $tables = $pdo->query("SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()")->fetchAll(PDO::FETCH_COLUMN);
 foreach ($required as $table) expect_true(in_array($table, $tables, true), "Missing table {$table}");
 
