@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS service_types (
   slug VARCHAR(160) NOT NULL UNIQUE,
   description TEXT NULL,
   requirements JSON NULL,
+  letter_template TEXT NULL,
   estimated_days SMALLINT UNSIGNED NULL,
   is_published TINYINT(1) NOT NULL DEFAULT 1,
   sort_order INT NOT NULL DEFAULT 0,
