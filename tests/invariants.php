@@ -60,6 +60,17 @@ foreach ([
     check_true(str_contains($schema, $needle), "Database schema missing invariant: {$needle}");
 }
 
+$style = load_text('assets/style.css');
+foreach ([
+    'Mobile hero composition aligned to DESA DIGITAL reference',
+    '.hero-visual{position:absolute;inset:0',
+    '.hero-copy{position:relative;z-index:2',
+    '.benefits,.welcome-card,.slider-dots{display:none}',
+    '.hero-actions .button-primary{background:#b9f45c;color:#14291d}'
+] as $needle) {
+    check_true(str_contains($style, $needle), "Reference-responsive styling missing invariant: {$needle}");
+}
+
 $index = load_text('index.php');
 foreach ([
     'Layanan desa,', 'Lacak Pengajuan', 'Berita & Pengumuman', 'user_notifications WHERE user_id=? ORDER BY',
